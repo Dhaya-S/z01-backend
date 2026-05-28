@@ -39,6 +39,7 @@ async function fixTable() {
         opening_time TIME,
         closing_time TIME,
         location_address TEXT,
+        street_address TEXT,
         location_lat DECIMAL(10, 8),
         location_lng DECIMAL(11, 8),
         delivery_available BOOLEAN DEFAULT FALSE,

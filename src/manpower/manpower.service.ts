@@ -45,7 +45,7 @@ export class ManpowerService {
         'location_address', 'travel_available', 'id_verification_required',
         'min_age', 'experience_years', 'skills', 'rules', 'terms_pdf_url',
         'image_1', 'image_2', 'image_3', 'image_4', 'image_5', 'status',
-        'latitude', 'longitude'
+        'location_lat', 'location_lng'
       ];
 
       const values = [
@@ -58,7 +58,7 @@ export class ManpowerService {
         data.experience_years || 0, data.skills || null, data.rules, data.terms_pdf_url,
         data.image_1, data.image_2, data.image_3, data.image_4, data.image_5,
         data.status || 'active',
-        data.latitude || null, data.longitude || null
+        data.location_lat || null, data.location_lng || null
       ];
 
       const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
@@ -81,7 +81,7 @@ export class ManpowerService {
         'location_address', 'travel_available', 'id_verification_required',
         'min_age', 'experience_years', 'skills', 'rules', 'terms_pdf_url',
         'image_1', 'image_2', 'image_3', 'image_4', 'image_5', 'status',
-        'latitude', 'longitude'
+        'location_lat', 'location_lng'
       ];
 
       const values = [
@@ -94,7 +94,7 @@ export class ManpowerService {
         data.experience_years || 0, data.skills || null, data.rules, data.terms_pdf_url,
         data.image_1, data.image_2, data.image_3, data.image_4, data.image_5,
         data.status || 'active',
-        data.latitude || null, data.longitude || null
+        data.location_lat || null, data.location_lng || null
       ];
 
       const sets = columns.map((col, i) => `${col} = $${i + 1}`).join(', ');

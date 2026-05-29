@@ -7,19 +7,15 @@ export class StudiosService {
 
   async findAll(vendorId?: number) {
     try {
-      let query = 'SELECT * FROM vendor_listings';
+      // Always filter to 'Studio' category to prevent cross-category data leakage
+      let query = "SELECT * FROM vendor_listings WHERE category = 'Studio'";
       const params: any[] = [];
-      const conditions: string[] = [];
 
       if (vendorId) {
         params.push(vendorId);
-        conditions.push(`vendor_id = $${params.length}`);
+        query += ` AND vendor_id = $${params.length}`;
       }
 
-      if (conditions.length > 0) {
-        query += ' WHERE ' + conditions.join(' AND ');
-      }
-      
       query += ' ORDER BY created_at DESC';
       const { rows } = await this.pool.query(query, params);
       return rows;

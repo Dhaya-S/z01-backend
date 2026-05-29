@@ -6,6 +6,13 @@ import { AuthGuard } from '@nestjs/passport';
 export class VendorsController {
   constructor(private readonly vendorsService: VendorsService) {}
 
+  // ── Unified dashboard endpoint (single-request load) ──────────────────────
+  @UseGuards(AuthGuard('jwt'))
+  @Get('dashboard')
+  async getDashboard(@Request() req: any) {
+    return this.vendorsService.getDashboardData(req.user.userId);
+  }
+
   @UseGuards(AuthGuard('jwt'))
   @Get('me')
   async getMyProfile(@Request() req: any) {

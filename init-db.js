@@ -107,6 +107,18 @@ async function initDB() {
     `);
     console.log('Bookings table created.');
 
+    // ── Performance Indexes ────────────────────────────────────────────────────
+    // These prevent full-table sequential scans on every API call.
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_vendors_user_id ON vendors (user_id);');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_vendor_listings_vendor_id ON vendor_listings (vendor_id);');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_vendor_listings_category ON vendor_listings (category);');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_vendor_listings_vendor_category ON vendor_listings (vendor_id, category);');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_user_id ON bookings (user_id);');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_listing_id ON bookings (listing_id);');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_vendor_documents_vendor_id ON vendor_documents (vendor_id);');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_vendor_bank_details_vendor_id ON vendor_bank_details (vendor_id);');
+    console.log('Performance indexes created.');
+
     console.log('Database initialization complete.');
     process.exit(0);
   } catch (error) {

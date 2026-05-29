@@ -22,7 +22,17 @@ export class BookingsService {
   async findByUser(userId: string) {
     try {
       const { rows } = await this.pool.query(
-        'SELECT b.*, v.name as listing_name, v.category as listing_category FROM bookings b LEFT JOIN vendor_listings v ON b.listing_id = v.id WHERE b.user_id = $1 ORDER BY b.created_at DESC',
+        `SELECT b.*,
+                v.listing_title as item_name,
+                v.category as listing_category,
+                b.total_amount as total_price,
+                TO_CHAR(b.start_date, 'YYYY-MM-DD') as date,
+                TO_CHAR(b.start_date, 'HH24:MI') as start_time,
+                TO_CHAR(b.end_date, 'HH24:MI') as end_time
+         FROM bookings b
+         LEFT JOIN vendor_listings v ON b.listing_id = v.id
+         WHERE b.user_id = $1
+         ORDER BY b.created_at DESC`,
         [userId]
       );
       return rows;
@@ -34,7 +44,19 @@ export class BookingsService {
   async findByVendor(vendorId: string) {
     try {
       const { rows } = await this.pool.query(
-        'SELECT b.*, v.title as listing_title, v.category as listing_category FROM bookings b JOIN vendor_listings v ON b.listing_id = v.id WHERE v.vendor_id = $1 ORDER BY b.created_at DESC',
+        `SELECT b.*,
+                v.listing_title as item_name,
+                v.category as listing_category,
+                b.total_amount as total_price,
+                TO_CHAR(b.start_date, 'YYYY-MM-DD') as date,
+                TO_CHAR(b.start_date, 'HH24:MI') as start_time,
+                TO_CHAR(b.end_date, 'HH24:MI') as end_time,
+                json_build_object('name', u.name, 'email', u.email, 'phone', u.phone) as users
+         FROM bookings b
+         JOIN vendor_listings v ON b.listing_id = v.id
+         LEFT JOIN users u ON b.user_id = u.id
+         WHERE v.vendor_id = $1
+         ORDER BY b.created_at DESC`,
         [vendorId]
       );
       return rows;

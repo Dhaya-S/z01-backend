@@ -5,7 +5,70 @@ import { Pool } from 'pg';
 export class VendorsService {
   constructor(@Inject('DATABASE_POOL') private pool: Pool) {}
 
-  // ── Update Details ─────────────────────────────────────────────────────────
+  // ── Dashboard (single-request optimised load) ──────────────────────────────
+  async getDashboardData(userId: string) {
+    try {
+      // Step 1: Resolve vendor ID from user ID
+      const vendorRes = await this.pool.query(
+        'SELECT id FROM vendors WHERE user_id = $1', [userId]
+      );
+      if (vendorRes.rows.length === 0) throw new NotFoundException('Vendor not found');
+      const vendorId = vendorRes.rows[0].id;
+
+      // Step 2: Load profile, listings & bookings in parallel
+      const [profileRes, listingsRes, bookingsRes] = await Promise.all([
+        // Vendor profile with documents and bank details
+        this.pool.query(
+          `SELECT v.*,
+                  row_to_json(vd) as documents,
+                  row_to_json(vb) as bank_details
+           FROM vendors v
+           LEFT JOIN vendor_documents vd ON vd.vendor_id = v.id
+           LEFT JOIN vendor_bank_details vb ON vb.vendor_id = v.id
+           WHERE v.id = $1`,
+          [vendorId]
+        ),
+        // All listings for this vendor
+        this.pool.query(
+          `SELECT * FROM vendor_listings WHERE vendor_id = $1 ORDER BY created_at DESC`,
+          [vendorId]
+        ),
+        // All bookings for this vendor with customer details and formatted timestamps
+        this.pool.query(
+          `SELECT b.*,
+                  vl.listing_title as item_name,
+                  vl.category as listing_category,
+                  b.total_amount as total_price,
+                  TO_CHAR(b.start_date, 'YYYY-MM-DD') as date,
+                  TO_CHAR(b.start_date, 'HH24:MI') as start_time,
+                  TO_CHAR(b.end_date, 'HH24:MI') as end_time,
+                  json_build_object('name', u.name, 'email', u.email, 'phone', u.phone) as users
+           FROM bookings b
+           JOIN vendor_listings vl ON b.listing_id = vl.id
+           LEFT JOIN users u ON b.user_id = u.id
+           WHERE vl.vendor_id = $1
+           ORDER BY b.created_at DESC`,
+          [vendorId]
+        ),
+      ]);
+
+      const v = profileRes.rows[0];
+      return {
+        vendor: {
+          ...v,
+          service_types: v.service_types ?? [],
+          location: v.location ?? null,
+        },
+        listings: listingsRes.rows,
+        bookings: bookingsRes.rows,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException('Failed to load dashboard data');
+    }
+  }
+
+
   async updateDetails(vendorId: string, details: any) {
     try {
       const {

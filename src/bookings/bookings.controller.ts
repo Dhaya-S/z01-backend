@@ -11,15 +11,17 @@ export class BookingsController {
     return { success: true, data };
   }
 
-  @Get(':userId')
-  async findByUser(@Param('userId') userId: string) {
-    const data = await this.bookingsService.findByUser(userId);
-    return { success: true, data };
-  }
-
+  // ⚠️ IMPORTANT: vendor/:vendorId MUST be declared BEFORE :userId
+  // Otherwise NestJS's :userId wildcard captures the word "vendor" as a userId.
   @Get('vendor/:vendorId')
   async findByVendor(@Param('vendorId') vendorId: string) {
     const data = await this.bookingsService.findByVendor(vendorId);
+    return { success: true, data };
+  }
+
+  @Get(':userId')
+  async findByUser(@Param('userId') userId: string) {
+    const data = await this.bookingsService.findByUser(userId);
     return { success: true, data };
   }
 }

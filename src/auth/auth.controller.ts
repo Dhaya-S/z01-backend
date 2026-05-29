@@ -14,4 +14,9 @@ export class AuthController {
   async login(@Body() body: any) {
     return await this.authService.login(body);
   }
+
+  @Post('google')
+  async googleLogin(@Body() body: any) {
+    return await this.authService.googleLogin(body);
+  }
 }

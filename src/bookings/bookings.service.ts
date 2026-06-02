@@ -13,8 +13,21 @@ export class BookingsService {
         'INSERT INTO bookings (user_id, listing_id, start_date, end_date, total_amount, status) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
         [user_id, listing_id, start_date, end_date, total_amount, status || 'pending']
       );
-      return rows[0];
+      const booking = rows[0];
+
+      // Fetch vendor info to send notification
+      const listingRes = await this.pool.query('SELECT vendor_id, listing_title FROM vendor_listings WHERE id = $1', [listing_id]);
+      if (listingRes.rows.length > 0) {
+        const { vendor_id, listing_title } = listingRes.rows[0];
+        await this.pool.query(
+          'INSERT INTO vendor_notifications (vendor_id, type, title, body) VALUES ($1, $2, $3, $4)',
+          [vendor_id, 'booking', 'New Booking Received', `Someone just booked your ${listing_title || 'item'}.`]
+        );
+      }
+
+      return booking;
     } catch (error) {
+      console.error(error);
       throw new InternalServerErrorException('Failed to create booking');
     }
   }
@@ -78,21 +91,31 @@ export class BookingsService {
       
       const booking = rows[0];
 
-      if (status.toLowerCase() === 'confirmed') {
-        const listingRes = await this.pool.query('SELECT listing_title FROM vendor_listings WHERE id = $1', [booking.listing_id]);
-        const itemName = listingRes.rows[0]?.listing_title || 'an item';
-        
-        const title = 'Booking Confirmed';
-        const body = `Your booking for ${itemName} has been confirmed by the vendor.`;
-        
-        await this.pool.query(
-          'INSERT INTO notifications (user_id, title, body) VALUES ($1, $2, $3)',
-          [booking.user_id, title, body]
-        );
+      if (status.toLowerCase() === 'confirmed' || status.toLowerCase() === 'canceled' || status.toLowerCase() === 'cancelled') {
+        const listingRes = await this.pool.query('SELECT vendor_id, listing_title FROM vendor_listings WHERE id = $1', [booking.listing_id]);
+        if (listingRes.rows.length > 0) {
+          const itemName = listingRes.rows[0].listing_title || 'an item';
+          const vendorId = listingRes.rows[0].vendor_id;
+          
+          if (status.toLowerCase() === 'confirmed') {
+            // Notify User
+            await this.pool.query(
+              'INSERT INTO notifications (user_id, title, body) VALUES ($1, $2, $3)',
+              [booking.user_id, 'Booking Confirmed', `Your booking for ${itemName} has been confirmed by the vendor.`]
+            );
+          } else {
+            // Notify Vendor
+            await this.pool.query(
+              'INSERT INTO vendor_notifications (vendor_id, type, title, body) VALUES ($1, $2, $3, $4)',
+              [vendorId, 'system', 'Booking Cancelled', `The booking for ${itemName} has been cancelled.`]
+            );
+          }
+        }
       }
 
       return booking;
     } catch (error) {
+      console.error(error);
       throw new InternalServerErrorException('Failed to update booking status');
     }
   }

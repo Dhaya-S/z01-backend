@@ -68,7 +68,18 @@ export class VendorsService {
       throw new InternalServerErrorException('Failed to load dashboard data');
     }
   }
-
+  async getNotifications(vendorId: string) {
+    try {
+      const res = await this.pool.query(
+        'SELECT * FROM vendor_notifications WHERE vendor_id = $1 ORDER BY created_at DESC',
+        [vendorId]
+      );
+      return res.rows;
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+      throw new InternalServerErrorException('Failed to fetch notifications');
+    }
+  }
 
   async updateDetails(vendorId: string, details: any) {
     try {

@@ -25,6 +25,12 @@ export class VendorsController {
     return this.vendorsService.getProfile(id);
   }
 
+  @Get(':id/notifications')
+  @UseGuards(AuthGuard('jwt'))
+  getNotifications(@Param('id') id: string) {
+    return this.vendorsService.getNotifications(id);
+  }
+
   @Post('details')
   @UseGuards(AuthGuard('jwt'))
   updateDetails(@Request() req: any, @Body() details: any) {

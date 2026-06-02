@@ -75,7 +75,23 @@ export class BookingsService {
         [status, bookingId]
       );
       if (rows.length === 0) throw new InternalServerErrorException('Booking not found');
-      return rows[0];
+      
+      const booking = rows[0];
+
+      if (status.toLowerCase() === 'confirmed') {
+        const listingRes = await this.pool.query('SELECT listing_title FROM vendor_listings WHERE id = $1', [booking.listing_id]);
+        const itemName = listingRes.rows[0]?.listing_title || 'an item';
+        
+        const title = 'Booking Confirmed';
+        const body = `Your booking for ${itemName} has been confirmed by the vendor.`;
+        
+        await this.pool.query(
+          'INSERT INTO notifications (user_id, title, body) VALUES ($1, $2, $3)',
+          [booking.user_id, title, body]
+        );
+      }
+
+      return booking;
     } catch (error) {
       throw new InternalServerErrorException('Failed to update booking status');
     }

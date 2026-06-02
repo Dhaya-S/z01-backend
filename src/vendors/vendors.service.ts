@@ -38,6 +38,7 @@ export class VendorsService {
           `SELECT b.*,
                   vl.listing_title as item_name,
                   vl.category as listing_category,
+                  vl.image_1,
                   b.total_amount as total_price,
                   TO_CHAR(b.start_date, 'YYYY-MM-DD') as date,
                   TO_CHAR(b.start_date, 'HH24:MI') as start_time,

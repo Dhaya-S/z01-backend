@@ -64,4 +64,17 @@ export class BookingsService {
       throw new InternalServerErrorException('Failed to fetch vendor bookings');
     }
   }
+
+  async updateStatus(bookingId: string, status: string) {
+    try {
+      const { rows } = await this.pool.query(
+        `UPDATE bookings SET status = $1 WHERE id = $2 RETURNING *`,
+        [status, bookingId]
+      );
+      if (rows.length === 0) throw new InternalServerErrorException('Booking not found');
+      return rows[0];
+    } catch (error) {
+      throw new InternalServerErrorException('Failed to update booking status');
+    }
+  }
 }

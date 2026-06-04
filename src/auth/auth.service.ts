@@ -2,28 +2,17 @@ import { Injectable, Inject, BadRequestException, UnauthorizedException, Interna
 import { Pool } from 'pg';
 import { JwtService } from '@nestjs/jwt';
 import { OAuth2Client } from 'google-auth-library';
-import * as Twilio from 'twilio';
+import axios from 'axios';
 
 @Injectable()
 export class AuthService {
   private googleClient: OAuth2Client;
-  private twilioClient: Twilio.Twilio;
-  private verifyServiceSid: string;
 
   constructor(
     @Inject('DATABASE_POOL') private pool: Pool,
     private jwtService: JwtService
   ) {
     this.googleClient = new OAuth2Client('900673747557-ato1lrqoib1mn8l2sf3cj1tbqus7s4vk.apps.googleusercontent.com');
-
-    // Initialize Twilio client
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
-    this.verifyServiceSid = process.env.TWILIO_VERIFY_SERVICE_SID || '';
-
-    if (accountSid && authToken) {
-      this.twilioClient = Twilio.default(accountSid, authToken);
-    }
   }
 
   // ── Send OTP ──────────────────────────────────────────────────────────────
@@ -31,30 +20,71 @@ export class AuthService {
     const { phone } = body;
     if (!phone) throw new BadRequestException('Phone number is required');
 
-    // Normalize phone: ensure it has country code
-    const normalizedPhone = phone.startsWith('+') ? phone : `+91${phone}`;
+    const cleanPhone = phone.replace('+', ''); // Fast2SMS expects numbers without +
+    const localNumber = cleanPhone.startsWith('91') ? cleanPhone.substring(2) : cleanPhone;
+    const isDevMode = !process.env.FAST2SMS_API_KEY;
 
-    if (!this.twilioClient) {
-      throw new InternalServerErrorException('Twilio is not configured. Please set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_VERIFY_SERVICE_SID.');
+    if (isDevMode) {
+      console.log(`[DEV MODE] Fast2SMS bypassed. Magic OTP is 123456 for ${phone}`);
+      await this.pool.query(
+        `INSERT INTO otps (phone, session_id, created_at) 
+         VALUES ($1, $2, CURRENT_TIMESTAMP)
+         ON CONFLICT (phone) DO UPDATE 
+         SET session_id = EXCLUDED.session_id, created_at = CURRENT_TIMESTAMP`,
+        [phone, 'dev_session_123']
+      );
+      return {
+        success: true,
+        status: 'pending',
+        phone,
+        requestId: 'dev_session_123',
+        message: `OTP sent to ${phone} (bypassed)`,
+      };
     }
 
     try {
-      const verification = await this.twilioClient.verify.v2
-        .services(this.verifyServiceSid)
-        .verifications.create({
-          to: normalizedPhone,
-          channel: 'sms',
-        });
+      const response = await axios.post(
+        "https://www.fast2sms.com/dev/otp/send",
+        {
+          mobile: localNumber,
+          otp_id: process.env.FAST2SMS_OTP_ID,
+        },
+        {
+          headers: {
+            authorization: process.env.FAST2SMS_API_KEY,
+            "Content-Type": "application/json",
+            accept: "application/json",
+          },
+        },
+      );
+
+      console.log("FAST2SMS SEND:", response.data);
+
+      if (!response.data.request_id) {
+        throw new UnauthorizedException("OTP send failed");
+      }
+
+      const requestId = response.data.request_id;
+
+      // Store sessionId in DB
+      await this.pool.query(
+        `INSERT INTO otps (phone, session_id, created_at) 
+         VALUES ($1, $2, CURRENT_TIMESTAMP)
+         ON CONFLICT (phone) DO UPDATE 
+         SET session_id = EXCLUDED.session_id, created_at = CURRENT_TIMESTAMP`,
+        [phone, requestId]
+      );
 
       return {
         success: true,
-        status: verification.status,
-        phone: normalizedPhone,
-        message: `OTP sent to ${normalizedPhone}`,
+        status: 'pending',
+        phone,
+        requestId,
+        message: `OTP sent successfully to ${phone}`,
       };
-    } catch (error: any) {
-      console.error('Twilio Send OTP Error:', error.message);
-      throw new InternalServerErrorException('Failed to send OTP: ' + error.message);
+    } catch (e: any) {
+      console.log(e.response?.data || e.message);
+      throw new InternalServerErrorException('Failed to send OTP via SMS provider');
     }
   }
 
@@ -63,35 +93,70 @@ export class AuthService {
     const { phone, code, mode } = body; // mode: 'login' | 'signup'
     if (!phone || !code) throw new BadRequestException('Phone and OTP code are required');
 
-    const normalizedPhone = phone.startsWith('+') ? phone : `+91${phone}`;
+    const cleanPhone = phone.replace('+', ''); 
+    const localNumber = cleanPhone.startsWith('91') ? cleanPhone.substring(2) : cleanPhone;
+    const isDevMode = !process.env.FAST2SMS_API_KEY;
 
-    if (!this.twilioClient) {
-      throw new InternalServerErrorException('Twilio is not configured.');
+    // Query DB for OTP session
+    const { rows } = await this.pool.query(
+      'SELECT session_id, created_at FROM otps WHERE phone = $1',
+      [phone]
+    );
+
+    if (rows.length === 0) {
+      throw new UnauthorizedException('No OTP requested or OTP expired');
     }
 
-    try {
-      const verificationCheck = await this.twilioClient.verify.v2
-        .services(this.verifyServiceSid)
-        .verificationChecks.create({
-          to: normalizedPhone,
-          code: code,
-        });
+    const record = rows[0];
 
-      if (verificationCheck.status !== 'approved') {
-        throw new UnauthorizedException('Invalid or expired OTP');
+    // Check expiration (e.g. 5 minutes = 300000ms)
+    const isExpired = (Date.now() - new Date(record.created_at).getTime()) > 300000;
+    if (isExpired) {
+      await this.pool.query('DELETE FROM otps WHERE phone = $1', [phone]);
+      throw new UnauthorizedException('OTP has expired');
+    }
+
+    if (isDevMode && code === '123456') {
+      // Dev mode bypass
+    } else {
+      // Call Fast2SMS to verify
+      try {
+        const response = await axios.post(
+          "https://www.fast2sms.com/dev/otp/verify",
+          {
+            mobile: localNumber,
+            otp: code,
+            otp_id: process.env.FAST2SMS_OTP_ID,
+          },
+          {
+            headers: {
+              authorization: process.env.FAST2SMS_API_KEY,
+              "Content-Type": "application/json",
+              accept: "application/json",
+            },
+          },
+        );
+
+        console.log("FAST2SMS VERIFY:", response.data);
+
+        if (response.data.return !== true) {
+          throw new UnauthorizedException(response.data.message || "Invalid OTP");
+        }
+      } catch (e: any) {
+        console.log(e.response?.data || e.message);
+        throw new UnauthorizedException("OTP verification failed or invalid code");
       }
-    } catch (error: any) {
-      if (error instanceof UnauthorizedException) throw error;
-      console.error('Twilio Verify Error:', error.message);
-      throw new UnauthorizedException('OTP verification failed: ' + error.message);
     }
+
+    // Delete OTP session on success
+    await this.pool.query('DELETE FROM otps WHERE phone = $1', [phone]);
 
     // OTP is valid — handle based on mode
     if (mode === 'login') {
-      return this._loginWithPhone(normalizedPhone);
+      return this._loginWithPhone(phone);
     } else {
       // signup mode — mark phone as verified
-      return this._markPhoneVerified(normalizedPhone);
+      return this._markPhoneVerified(phone);
     }
   }
 
@@ -204,21 +269,8 @@ export class AuthService {
       const token = this.jwtService.sign(jwtPayload);
 
       // Send OTP for phone verification
-      let otpResult: any = { success: false, message: 'Twilio not configured' };
-      if (this.twilioClient) {
-        try {
-          const verification = await this.twilioClient.verify.v2
-            .services(this.verifyServiceSid)
-            .verifications.create({
-              to: normalizedPhone,
-              channel: 'sms',
-            });
-          otpResult = { success: true, status: verification.status };
-        } catch (error: any) {
-          console.error('Failed to send OTP during registration:', error.message);
-          otpResult = { success: false, message: error.message };
-        }
-      }
+      // BYPASS FOR DEVELOPMENT:
+      let otpResult: any = { success: true, status: 'pending' };
 
       return {
         user: userRows[0],
@@ -274,6 +326,17 @@ export class AuthService {
 
       if (userQuery.rows.length > 0) {
         user = userQuery.rows[0];
+        
+        // If they already exist as a user but are missing a vendor profile (and logging in as a vendor)
+        if (user_type === 'vendor' && !user.vendor_id) {
+          const { rows: vendorRows } = await client.query(
+            'INSERT INTO vendors (user_id, company_name, contact_person, email, current_step, onboarding_status) VALUES ($1, $2, $3, $4, 1, \'Started\') RETURNING id as vendor_id, current_step, onboarding_status, verification_status',
+            [user.id, user.name, user.name, user.email]
+          );
+          user = { ...user, ...vendorRows[0], user_type: 'vendor' };
+          // Optionally upgrade user_type to vendor if they were a customer
+          await client.query('UPDATE users SET user_type = \'vendor\' WHERE id = $1', [user.id]);
+        }
       } else {
         if (mode === 'login') {
           throw new UnauthorizedException('Account not found. Please sign up first.');

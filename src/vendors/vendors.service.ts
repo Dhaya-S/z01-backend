@@ -15,8 +15,8 @@ export class VendorsService {
       if (vendorRes.rows.length === 0) throw new NotFoundException('Vendor not found');
       const vendorId = vendorRes.rows[0].id;
 
-      // Step 2: Load profile, listings & bookings in parallel
-      const [profileRes, listingsRes, bookingsRes] = await Promise.all([
+      // Step 2: Load profile, listings, bookings & reviews in parallel
+      const [profileRes, listingsRes, bookingsRes, reviewsRes, ratingRes] = await Promise.all([
         // Vendor profile with documents and bank details
         this.pool.query(
           `SELECT v.*,
@@ -51,17 +51,42 @@ export class VendorsService {
            ORDER BY b.created_at DESC`,
           [vendorId]
         ),
+        // Top 3 recent reviews
+        this.pool.query(
+          `SELECT r.*,
+                  u.name as user_name,
+                  vl.category as listing_category
+           FROM vendor_reviews r
+           LEFT JOIN users u ON r.user_id = u.id
+           LEFT JOIN vendor_listings vl ON r.listing_id = vl.id
+           WHERE r.vendor_id = $1
+           ORDER BY r.created_at DESC
+           LIMIT 3`,
+          [vendorId]
+        ),
+        // Aggregated rating stats
+        this.pool.query(
+          `SELECT COUNT(id) as total_reviews, AVG(rating) as avg_rating
+           FROM vendor_reviews
+           WHERE vendor_id = $1`,
+          [vendorId]
+        ),
       ]);
 
       const v = profileRes.rows[0];
+      const stats = ratingRes.rows[0] || { total_reviews: 0, avg_rating: null };
+
       return {
         vendor: {
           ...v,
           service_types: v.service_types ?? [],
           location: v.location ?? null,
+          total_reviews: parseInt(stats.total_reviews) || 0,
+          avg_rating: stats.avg_rating ? parseFloat(stats.avg_rating).toFixed(1) : '5.0', // default to 5.0 if no reviews
         },
         listings: listingsRes.rows,
         bookings: bookingsRes.rows,
+        reviews: reviewsRes.rows,
       };
     } catch (error) {
       if (error instanceof NotFoundException) throw error;

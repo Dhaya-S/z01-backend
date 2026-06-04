@@ -23,10 +23,22 @@ async function initDB() {
         email VARCHAR(255) UNIQUE NOT NULL,
         password VARCHAR(255) NOT NULL,
         phone VARCHAR(20),
+        user_type VARCHAR(50) DEFAULT 'customer',
+        phone_verified BOOLEAN DEFAULT false,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
     console.log('Users table ensured.');
+
+    // Create OTPs table for temporary OTP storage (Fast2SMS request_id)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS otps (
+        phone VARCHAR(20) PRIMARY KEY,
+        session_id VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log('OTPs table created.');
 
     // Create Vendors table
     await pool.query(`
@@ -107,6 +119,20 @@ async function initDB() {
     `);
     console.log('Bookings table created.');
 
+    // Create Vendor Reviews table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS vendor_reviews (
+        id SERIAL PRIMARY KEY,
+        vendor_id INTEGER REFERENCES vendors(id) ON DELETE CASCADE,
+        user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+        listing_id INTEGER REFERENCES vendor_listings(id) ON DELETE SET NULL,
+        rating INTEGER CHECK (rating >= 1 AND rating <= 5),
+        review_text TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log('Vendor Reviews table created.');
+
     // ── Performance Indexes ────────────────────────────────────────────────────
     // These prevent full-table sequential scans on every API call.
     await pool.query('CREATE INDEX IF NOT EXISTS idx_vendors_user_id ON vendors (user_id);');
@@ -117,6 +143,7 @@ async function initDB() {
     await pool.query('CREATE INDEX IF NOT EXISTS idx_bookings_listing_id ON bookings (listing_id);');
     await pool.query('CREATE INDEX IF NOT EXISTS idx_vendor_documents_vendor_id ON vendor_documents (vendor_id);');
     await pool.query('CREATE INDEX IF NOT EXISTS idx_vendor_bank_details_vendor_id ON vendor_bank_details (vendor_id);');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_vendor_reviews_vendor_id ON vendor_reviews (vendor_id);');
     console.log('Performance indexes created.');
 
     console.log('Database initialization complete.');

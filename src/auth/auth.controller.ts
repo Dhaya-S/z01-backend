@@ -1,4 +1,5 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Request } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 
 @Controller('auth')
@@ -35,5 +36,11 @@ export class AuthController {
   @Post('register-phone')
   async registerWithPhone(@Body() body: any) {
     return await this.authService.registerWithPhone(body);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post('verify-new-phone')
+  async verifyNewPhone(@Request() req: any, @Body() body: any) {
+    return await this.authService.verifyNewPhone(req.user.userId, body);
   }
 }

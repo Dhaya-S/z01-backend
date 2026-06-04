@@ -370,6 +370,11 @@ export class AuthService {
       const jwtPayload = { sub: user.id, email: user.email };
       const token = this.jwtService.sign(jwtPayload);
 
+      // Check if phone is already verified
+      const phoneRow = await client.query('SELECT phone, phone_verified FROM users WHERE id = $1', [user.id]);
+      const phoneVerified = phoneRow.rows[0]?.phone_verified === true;
+      const userPhone = phoneRow.rows[0]?.phone || null;
+
       return {
         user: {
           id: user.id,
@@ -382,6 +387,8 @@ export class AuthService {
         onboardingStatus: user.onboarding_status || 'Started',
         currentStep: user.current_step || 1,
         verificationStatus: user.verification_status || 'Pending',
+        phoneVerified,
+        phone: userPhone,
         token
       };
     } catch (e) {
@@ -490,5 +497,49 @@ export class AuthService {
       if (error instanceof UnauthorizedException) throw error;
       throw new InternalServerErrorException('Failed to log in');
     }
+  }
+
+  // ── Verify and set a new phone number (for Google sign-in users) ──────────
+  async verifyNewPhone(userId: string, body: any) {
+    const { phone, otp } = body;
+    if (!phone || !otp) throw new BadRequestException('Phone and OTP are required');
+
+    const normalizedPhone = phone.startsWith('+91') ? phone : `+91${phone.replace(/^91/, '')}`;
+    const localNumber = normalizedPhone.replace('+91', '');
+
+    const isDevMode = !process.env.FAST2SMS_API_KEY;
+
+    // Look up the OTP session in the database
+    const { rows: otpRows } = await this.pool.query(
+      'SELECT session_id FROM otps WHERE phone = $1 ORDER BY created_at DESC LIMIT 1',
+      [localNumber]
+    );
+    if (otpRows.length === 0) throw new BadRequestException('OTP expired or not found. Please request a new one.');
+    const sessionId = otpRows[0].session_id;
+
+    if (isDevMode) {
+      if (otp !== '123456') throw new UnauthorizedException('Invalid OTP (dev: use 123456)');
+    } else {
+      // Verify with Fast2SMS
+      const response = await axios.post(
+        'https://www.fast2sms.com/dev/otp/verify',
+        { otp_id: sessionId, otp },
+        { headers: { authorization: process.env.FAST2SMS_API_KEY } }
+      );
+      if (!response.data?.verified) throw new UnauthorizedException('Invalid or expired OTP.');
+    }
+
+    // OTP is valid — update user phone and mark verified
+    await this.pool.query('DELETE FROM otps WHERE phone = $1', [localNumber]);
+    await this.pool.query(
+      'UPDATE users SET phone = $1, phone_verified = true WHERE id = $2',
+      [normalizedPhone, userId]
+    );
+    await this.pool.query(
+      'UPDATE vendors SET phone = $1 WHERE user_id = $2',
+      [normalizedPhone, userId]
+    );
+
+    return { success: true, message: 'Phone number verified successfully.' };
   }
 }

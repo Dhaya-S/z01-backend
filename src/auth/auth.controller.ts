@@ -19,4 +19,21 @@ export class AuthController {
   async googleLogin(@Body() body: any) {
     return await this.authService.googleLogin(body);
   }
+
+  // ── OTP Endpoints ─────────────────────────────────────────────────────────
+
+  @Post('send-otp')
+  async sendOtp(@Body() body: any) {
+    return await this.authService.sendOtp(body);
+  }
+
+  @Post('verify-otp')
+  async verifyOtp(@Body() body: any) {
+    return await this.authService.verifyOtp(body);
+  }
+
+  @Post('register-phone')
+  async registerWithPhone(@Body() body: any) {
+    return await this.authService.registerWithPhone(body);
+  }
 }

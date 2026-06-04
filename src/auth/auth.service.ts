@@ -512,7 +512,7 @@ export class AuthService {
     // Look up the OTP session in the database
     const { rows: otpRows } = await this.pool.query(
       'SELECT session_id FROM otps WHERE phone = $1 ORDER BY created_at DESC LIMIT 1',
-      [localNumber]
+      [normalizedPhone]
     );
     if (otpRows.length === 0) throw new BadRequestException('OTP expired or not found. Please request a new one.');
     const sessionId = otpRows[0].session_id;
@@ -520,17 +520,37 @@ export class AuthService {
     if (isDevMode) {
       if (otp !== '123456') throw new UnauthorizedException('Invalid OTP (dev: use 123456)');
     } else {
-      // Verify with Fast2SMS
-      const response = await axios.post(
-        'https://www.fast2sms.com/dev/otp/verify',
-        { otp_id: sessionId, otp },
-        { headers: { authorization: process.env.FAST2SMS_API_KEY } }
-      );
-      if (!response.data?.verified) throw new UnauthorizedException('Invalid or expired OTP.');
+      // Call Fast2SMS to verify (matching verifyOtp style)
+      try {
+        const response = await axios.post(
+          "https://www.fast2sms.com/dev/otp/verify",
+          {
+            mobile: localNumber,
+            otp: otp,
+            otp_id: process.env.FAST2SMS_OTP_ID,
+          },
+          {
+            headers: {
+              authorization: process.env.FAST2SMS_API_KEY,
+              "Content-Type": "application/json",
+              accept: "application/json",
+            },
+          },
+        );
+
+        console.log("FAST2SMS VERIFY (verifyNewPhone):", response.data);
+
+        if (response.data.return !== true) {
+          throw new UnauthorizedException(response.data.message || "Invalid OTP");
+        }
+      } catch (e: any) {
+        console.log(e.response?.data || e.message);
+        throw new UnauthorizedException("OTP verification failed or invalid code");
+      }
     }
 
     // OTP is valid — update user phone and mark verified
-    await this.pool.query('DELETE FROM otps WHERE phone = $1', [localNumber]);
+    await this.pool.query('DELETE FROM otps WHERE phone = $1', [normalizedPhone]);
     await this.pool.query(
       'UPDATE users SET phone = $1, phone_verified = true WHERE id = $2',
       [normalizedPhone, userId]

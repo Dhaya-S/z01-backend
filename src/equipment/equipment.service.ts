@@ -99,7 +99,7 @@ export class EquipmentService {
         data.image_1, data.image_2, data.image_3, data.image_4, data.image_5,
         data.status || 'active',
         data.location_lat || null, data.location_lng || null
-      ];
+      ].map(v => v === undefined ? null : v);
 
       const sets = columns.map((col, i) => `${col} = $${i + 1}`).join(', ');
       const query = `UPDATE vendor_listings SET ${sets} WHERE id = $${columns.length + 1} AND vendor_id = $${columns.length + 2} AND category = 'Equipment' RETURNING *`;
@@ -111,7 +111,8 @@ export class EquipmentService {
       return rows[0];
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
-      throw new InternalServerErrorException('Failed to update equipment');
+      console.error('Update equipment error:', error);
+      throw new InternalServerErrorException(`Failed to update listing: ${error.message}`);
     }
   }
 

@@ -269,8 +269,12 @@ export class AuthService {
       const token = this.jwtService.sign(jwtPayload);
 
       // Send OTP for phone verification
-      // BYPASS FOR DEVELOPMENT:
-      let otpResult: any = { success: true, status: 'pending' };
+      let otpResult: any = { success: false, status: 'pending' };
+      try {
+        otpResult = await this.sendOtp({ phone: normalizedPhone });
+      } catch (e) {
+        console.error('Error sending OTP during registration:', e);
+      }
 
       return {
         user: userRows[0],

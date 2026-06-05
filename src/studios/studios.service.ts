@@ -83,7 +83,7 @@ export class StudiosService {
         'area_sqft', 'capacity', 'amenities', 'brand', 'model', 'specifications',
         'quantity', 'deposit_amount', 'price_per_hour', 'price_per_day',
         'minimum_booking_hours', 'cancellation_policy', 'opening_time', 'closing_time',
-        'location_address', 'delivery_available', 'id_verification_required',
+        'location_address', 'street_address', 'delivery_available', 'id_verification_required',
         'min_age', 'insurance_required', 'rules', 'terms_pdf_url',
         'image_1', 'image_2', 'image_3', 'image_4', 'image_5', 'status',
         'location_lat', 'location_lng'

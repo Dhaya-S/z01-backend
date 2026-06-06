@@ -10,6 +10,7 @@ import { AuthModule } from './auth/auth.module';
 import { VendorsModule } from './vendors/vendors.module';
 import { UploadModule } from './upload/upload.module';
 import { OneSignalModule } from './onesignal/onesignal.module';
+import { AvailabilityModule } from './availability/availability.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { OneSignalModule } from './onesignal/onesignal.module';
     VendorsModule,
     UploadModule,
     OneSignalModule,
+    AvailabilityModule,
   ],
   controllers: [AppController],
   providers: [AppService],

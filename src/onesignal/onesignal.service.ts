@@ -31,7 +31,9 @@ export class OneSignalService {
       const response = await axios.post(this.baseUrl, payload, {
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Basic ${this.restApiKey}`,
+          Authorization: this.restApiKey.startsWith('os_v2_app_')
+            ? `Key ${this.restApiKey}`
+            : `Basic ${this.restApiKey}`,
         },
       });
 
@@ -42,7 +44,7 @@ export class OneSignalService {
         `Failed to send OneSignal notification to vendor_${vendorId}`,
         error.response?.data || error.message,
       );
-      // We don't throw an error here to prevent blocking the main flow (like booking creation)
+      throw error;
     }
   }
 }

@@ -26,6 +26,10 @@ export class OneSignalService {
         headings: { en: title },
         contents: { en: body },
         data: data || {},
+        priority: 10, // Forces high priority for pop-up and vibration
+        ios_sound: 'default',
+        android_sound: 'default',
+        android_visibility: 1, // 1 = Public (shows on lock screen)
       };
 
       const response = await axios.post(this.baseUrl, payload, {
@@ -46,5 +50,33 @@ export class OneSignalService {
       );
       throw error;
     }
+  }
+
+  // 1. New Booking Notification
+  async sendNewBookingNotification(vendorId: string, bookingId: string, customerName: string, serviceName: string) {
+    const title = '🎉 New Booking Received!';
+    const body = `${customerName} just booked "${serviceName}". Tap to view details.`;
+    return this.sendVendorNotification(vendorId, title, body, { type: 'new_booking', bookingId });
+  }
+
+  // 2. Cancelled Booking Notification
+  async sendBookingCancelledNotification(vendorId: string, bookingId: string, customerName: string, serviceName: string) {
+    const title = '⚠️ Booking Cancelled';
+    const body = `${customerName} has cancelled their booking for "${serviceName}".`;
+    return this.sendVendorNotification(vendorId, title, body, { type: 'booking_cancelled', bookingId });
+  }
+
+  // 3. New Review Notification
+  async sendNewReviewNotification(vendorId: string, reviewerName: string, rating: number, reviewText: string) {
+    const title = `⭐ New ${rating}-Star Review!`;
+    const body = `${reviewerName} left a new review: "${reviewText.substring(0, 50)}${reviewText.length > 50 ? '...' : ''}"`;
+    return this.sendVendorNotification(vendorId, title, body, { type: 'new_review' });
+  }
+
+  // 4. Money Credited Notification
+  async sendMoneyCreditedNotification(vendorId: string, amount: string | number, transactionId: string) {
+    const title = '💰 Money Credited to Your Account';
+    const body = `₹${amount} has been successfully credited to your wallet. Tap to check your balance!`;
+    return this.sendVendorNotification(vendorId, title, body, { type: 'money_credited', transactionId });
   }
 }

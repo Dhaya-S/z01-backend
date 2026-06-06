@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import { JwtService } from '@nestjs/jwt';
 import { OAuth2Client } from 'google-auth-library';
 import axios from 'axios';
+import { OneSignalService } from '../onesignal/onesignal.service';
 
 @Injectable()
 export class AuthService {
@@ -10,19 +11,43 @@ export class AuthService {
 
   constructor(
     @Inject('DATABASE_POOL') private pool: Pool,
-    private jwtService: JwtService
+    private jwtService: JwtService,
+    private oneSignalService: OneSignalService
   ) {
     this.googleClient = new OAuth2Client('900673747557-ato1lrqoib1mn8l2sf3cj1tbqus7s4vk.apps.googleusercontent.com');
   }
 
   // ── Send OTP ──────────────────────────────────────────────────────────────
   async sendOtp(body: any) {
-    const { phone } = body;
+    const { phone, mode } = body;
     if (!phone) throw new BadRequestException('Phone number is required');
 
     const cleanPhone = phone.replace('+', ''); // Fast2SMS expects numbers without +
     const localNumber = cleanPhone.startsWith('91') ? cleanPhone.substring(2) : cleanPhone;
+    const normalizedPhone = phone.startsWith('+') ? phone : `+91${cleanPhone}`;
     const isDevMode = !process.env.FAST2SMS_API_KEY;
+
+    // Check database before sending OTP to save credits
+    if (mode === 'login') {
+      const { rows } = await this.pool.query(
+        `SELECT u.id, v.verification_status 
+         FROM users u
+         LEFT JOIN vendors v ON u.id = v.user_id
+         WHERE u.phone = $1`,
+        [normalizedPhone]
+      );
+      if (rows.length === 0) {
+        throw new BadRequestException('Account not found. Please sign up first.');
+      }
+      if (rows[0].verification_status && rows[0].verification_status !== 'Approved') {
+        throw new UnauthorizedException('Your account is pending admin approval. You will be able to log in once approved.');
+      }
+    } else if (mode === 'signup') {
+      const { rows } = await this.pool.query('SELECT id FROM users WHERE phone = $1', [normalizedPhone]);
+      if (rows.length > 0) {
+        throw new BadRequestException('An account with this phone number already exists.');
+      }
+    }
 
     if (isDevMode) {
       console.log(`[DEV MODE] Fast2SMS bypassed. Magic OTP is 123456 for ${phone}`);
@@ -164,7 +189,7 @@ export class AuthService {
   private async _loginWithPhone(phone: string) {
     const { rows } = await this.pool.query(
       `SELECT u.id, u.name, u.email, u.phone, u.user_type, u.created_at,
-              v.id as vendor_id, v.onboarding_status, v.current_step, v.verification_status
+              v.id as vendor_id, v.onboarding_status, v.current_step, v.verification_status, v.welcome_sent
        FROM users u
        LEFT JOIN vendors v ON u.id = v.user_id
        WHERE u.phone = $1`,
@@ -188,6 +213,16 @@ export class AuthService {
 
     // Mark phone as verified on login
     await this.pool.query('UPDATE users SET phone_verified = true WHERE id = $1', [user.id]);
+
+    // If this is the first login after approval, send a welcome notification
+    if (user.onboarding_status === 'Completed' && user.verification_status === 'Approved' && user.welcome_sent === false) {
+      await this.pool.query('UPDATE vendors SET welcome_sent = true WHERE id = $1', [user.vendor_id]);
+      this.oneSignalService.sendVendorNotification(
+        user.vendor_id,
+        'Welcome to CreatorSpace! 🎉',
+        'Your account has been fully approved. You can now start receiving bookings!'
+      );
+    }
 
     const payload = { sub: user.id, email: user.email };
     const token = this.jwtService.sign(payload);
@@ -301,7 +336,7 @@ export class AuthService {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      let userQuery = await client.query('SELECT u.id, u.name, u.email, u.user_type, u.created_at, v.id as vendor_id, v.onboarding_status, v.current_step, v.verification_status FROM users u LEFT JOIN vendors v ON u.id = v.user_id WHERE u.email = $1', [email]);
+      let userQuery = await client.query('SELECT u.id, u.name, u.email, u.user_type, u.created_at, v.id as vendor_id, v.onboarding_status, v.current_step, v.verification_status, v.welcome_sent FROM users u LEFT JOIN vendors v ON u.id = v.user_id WHERE u.email = $1', [email]);
       let user;
 
       if (userQuery.rows.length > 0) {
@@ -345,6 +380,16 @@ export class AuthService {
 
       if (user.onboarding_status === 'Completed' && user.verification_status !== 'Approved') {
         throw new UnauthorizedException('Your account is pending admin approval. You will be able to log in once approved.');
+      }
+
+      // Send welcome notification if it's the first time they log in after getting approved via Google Auth
+      if (user.onboarding_status === 'Completed' && user.verification_status === 'Approved' && user.welcome_sent === false) {
+        await client.query('UPDATE vendors SET welcome_sent = true WHERE id = $1', [user.vendor_id]);
+        this.oneSignalService.sendVendorNotification(
+          user.vendor_id,
+          'Welcome to CreatorSpace! 🎉',
+          'Your account has been fully approved. You can now start receiving bookings!'
+        );
       }
 
       const jwtPayload = { sub: user.id, email: user.email };
@@ -437,7 +482,7 @@ export class AuthService {
       const { email, password, required_role } = body;
       
       const { rows } = await this.pool.query(
-        'SELECT u.id, u.name, u.email, u.password, u.user_type, u.created_at, v.id as vendor_id, v.onboarding_status, v.current_step, v.verification_status FROM users u LEFT JOIN vendors v ON u.id = v.user_id WHERE u.email = $1 AND u.password = $2',
+        'SELECT u.id, u.name, u.email, u.password, u.user_type, u.created_at, v.id as vendor_id, v.onboarding_status, v.current_step, v.verification_status, v.welcome_sent FROM users u LEFT JOIN vendors v ON u.id = v.user_id WHERE u.email = $1 AND u.password = $2',
         [email, password]
       );
       
@@ -454,6 +499,16 @@ export class AuthService {
       // If they finished onboarding but admin hasn't approved them yet, block login.
       if (user.onboarding_status === 'Completed' && user.verification_status !== 'Approved') {
         throw new UnauthorizedException('Your account is pending admin approval. You will be able to log in once approved.');
+      }
+
+      // If this is the first login after approval, send a welcome notification
+      if (user.onboarding_status === 'Completed' && user.verification_status === 'Approved' && user.welcome_sent === false) {
+        await this.pool.query('UPDATE vendors SET welcome_sent = true WHERE id = $1', [user.vendor_id]);
+        this.oneSignalService.sendVendorNotification(
+          user.vendor_id,
+          'Welcome to CreatorSpace! 🎉',
+          'Your account has been fully approved. You can now start receiving bookings!'
+        );
       }
 
       const payload = { sub: user.id, email: user.email };

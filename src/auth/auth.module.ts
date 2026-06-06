@@ -5,6 +5,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { DatabaseModule } from '../database/database.module';
 import { JwtStrategy } from './jwt.strategy';
+import { OneSignalModule } from '../onesignal/onesignal.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { JwtStrategy } from './jwt.strategy';
       secret: process.env.JWT_SECRET || 'your-secret-key-change-this-in-production',
       signOptions: { expiresIn: '7d' },
     }),
+    OneSignalModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],

@@ -9,6 +9,7 @@ import { BookingsModule } from './bookings/bookings.module';
 import { AuthModule } from './auth/auth.module';
 import { VendorsModule } from './vendors/vendors.module';
 import { UploadModule } from './upload/upload.module';
+import { OneSignalModule } from './onesignal/onesignal.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { UploadModule } from './upload/upload.module';
     AuthModule,
     VendorsModule,
     UploadModule,
+    OneSignalModule,
   ],
   controllers: [AppController],
   providers: [AppService],

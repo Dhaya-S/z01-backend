@@ -33,10 +33,6 @@ export class AuthController {
     return await this.authService.verifyOtp(body);
   }
 
-  @Post('register-phone')
-  async registerWithPhone(@Body() body: any) {
-    return await this.authService.registerWithPhone(body);
-  }
 
   @UseGuards(AuthGuard('jwt'))
   @Post('verify-new-phone')

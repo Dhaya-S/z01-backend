@@ -90,7 +90,7 @@ export class AuthService {
 
   // ── Verify OTP ────────────────────────────────────────────────────────────
   async verifyOtp(body: any) {
-    const { phone, code, mode } = body; // mode: 'login' | 'signup'
+    const { phone, code, mode, name, email } = body; // mode: 'login' | 'signup'
     if (!phone || !code) throw new BadRequestException('Phone and OTP code are required');
 
     const cleanPhone = phone.replace('+', ''); 
@@ -155,8 +155,8 @@ export class AuthService {
     if (mode === 'login') {
       return this._loginWithPhone(phone);
     } else {
-      // signup mode — mark phone as verified
-      return this._markPhoneVerified(phone);
+      // signup mode — create account and return token
+      return this._registerWithPhoneVerified(name, phone, email);
     }
   }
 
@@ -210,36 +210,19 @@ export class AuthService {
   }
 
   // ── Mark phone as verified (signup flow) ──────────────────────────────────
-  private async _markPhoneVerified(phone: string) {
-    const { rows } = await this.pool.query(
-      'UPDATE users SET phone_verified = true WHERE phone = $1 RETURNING id, name, email, phone',
-      [phone]
-    );
-
-    if (rows.length === 0) {
-      throw new BadRequestException('No account found with this phone number.');
-    }
-
-    return {
-      success: true,
-      message: 'Phone number verified successfully',
-      user: rows[0],
-    };
-  }
-
-  // ── Register with Phone ───────────────────────────────────────────────────
-  async registerWithPhone(body: any) {
+  // ── Register after OTP is verified (signup flow) ─────────────────────────
+  private async _registerWithPhoneVerified(name: string, phone: string, email?: string) {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      const { name, phone, email, password } = body;
-
       const normalizedPhone = phone.startsWith('+') ? phone : `+91${phone}`;
 
-      // Check if user already exists (by email or phone)
-      const existingEmail = await client.query('SELECT id FROM users WHERE email = $1', [email]);
-      if (existingEmail.rows.length > 0) {
-        throw new BadRequestException('An account with this email already exists');
+      // Check if user already exists
+      if (email) {
+        const existingEmail = await client.query('SELECT id FROM users WHERE email = $1', [email]);
+        if (existingEmail.rows.length > 0) {
+          throw new BadRequestException('An account with this email already exists');
+        }
       }
 
       const existingPhone = await client.query('SELECT id FROM users WHERE phone = $1', [normalizedPhone]);
@@ -247,42 +230,35 @@ export class AuthService {
         throw new BadRequestException('An account with this phone number already exists');
       }
 
-      // Create user
+      // Create user (no password needed for OTP flow)
+      const randomPassword = Math.random().toString(36).slice(-8); // Random placeholder password
       const { rows: userRows } = await client.query(
-        'INSERT INTO users (name, email, password, phone, user_type, phone_verified) VALUES ($1, $2, $3, $4, $5, false) RETURNING id, name, email, phone, user_type, created_at',
-        [name, email, password, normalizedPhone, 'vendor']
+        'INSERT INTO users (name, email, password, phone, user_type, phone_verified) VALUES ($1, $2, $3, $4, $5, true) RETURNING id, name, email, phone, user_type, created_at',
+        [name, email || null, randomPassword, normalizedPhone, 'vendor']
       );
 
       const userId = userRows[0].id;
 
-      // Create vendor record
+      // Create vendor record, default verification_status is 'Pending'
       const { rows: vendorRows } = await client.query(
-        `INSERT INTO vendors (user_id, company_name, contact_person, phone, email, current_step, onboarding_status)
-         VALUES ($1, $2, $3, $4, $5, 1, 'Started') RETURNING id, current_step, onboarding_status`,
-        [userId, name, name, normalizedPhone, email]
+        `INSERT INTO vendors (user_id, company_name, contact_person, phone, email, current_step, onboarding_status, verification_status)
+         VALUES ($1, $2, $3, $4, $5, 1, 'Started', 'Pending') RETURNING id, current_step, onboarding_status, verification_status`,
+        [userId, name, name, normalizedPhone, email || null]
       );
 
       await client.query('COMMIT');
 
-      // Generate JWT so the app can make authenticated requests during onboarding
-      const jwtPayload = { sub: userId, email };
+      // Generate JWT
+      const jwtPayload = { sub: userId, email: email || null };
       const token = this.jwtService.sign(jwtPayload);
-
-      // Send OTP for phone verification
-      let otpResult: any = { success: false, status: 'pending' };
-      try {
-        otpResult = await this.sendOtp({ phone: normalizedPhone });
-      } catch (e) {
-        console.error('Error sending OTP during registration:', e);
-      }
 
       return {
         user: userRows[0],
         vendorId: vendorRows[0].id,
         onboardingStatus: vendorRows[0].onboarding_status,
         currentStep: vendorRows[0].current_step,
+        verificationStatus: vendorRows[0].verification_status,
         token,
-        otpSent: otpResult.success,
         phone: normalizedPhone,
       };
     } catch (error) {

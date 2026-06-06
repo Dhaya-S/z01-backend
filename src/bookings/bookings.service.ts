@@ -1,9 +1,13 @@
 import { Injectable, Inject, InternalServerErrorException } from '@nestjs/common';
 import { Pool } from 'pg';
+import { OneSignalService } from '../onesignal/onesignal.service';
 
 @Injectable()
 export class BookingsService {
-  constructor(@Inject('DATABASE_POOL') private pool: Pool) {}
+  constructor(
+    @Inject('DATABASE_POOL') private pool: Pool,
+    private readonly onesignalService: OneSignalService,
+  ) {}
 
   async create(body: any) {
     try {
@@ -55,6 +59,12 @@ export class BookingsService {
             'New Booking Received',
             `Someone just booked your ${listing_title || 'item'}.${depositNote}`,
           ]
+        );
+        await this.onesignalService.sendVendorNotification(
+          vendor_id,
+          'New Booking Received',
+          `Someone just booked your ${listing_title || 'item'}.${depositNote}`,
+          { type: 'booking', bookingId: booking.id }
         );
       }
 
@@ -198,6 +208,12 @@ export class BookingsService {
                 `The${depositStr} from the ${itemName} booking has been added to your earnings.`,
               ]
             );
+            await this.onesignalService.sendVendorNotification(
+              vendor_id,
+              'Deposit Added to Earnings',
+              `The${depositStr} from the ${itemName} booking has been added to your earnings.`,
+              { type: 'earnings', bookingId: booking.id }
+            );
           }
         }
 
@@ -219,6 +235,12 @@ export class BookingsService {
           await this.pool.query(
             'INSERT INTO vendor_notifications (vendor_id, type, title, body) VALUES ($1, $2, $3, $4)',
             [vendor_id, 'system', 'Booking Cancelled', vendorCancelMsg]
+          );
+          await this.onesignalService.sendVendorNotification(
+            vendor_id,
+            'Booking Cancelled',
+            vendorCancelMsg,
+            { type: 'system', bookingId: booking.id }
           );
         }
       }

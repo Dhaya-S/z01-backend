@@ -216,16 +216,18 @@ export class AuthService {
 
     // If this is the first login after approval, send a welcome notification
     if (user.onboarding_status === 'Completed' && user.verification_status === 'Approved' && user.welcome_sent === false) {
-      try {
-        await this.oneSignalService.sendVendorNotification(
-          user.vendor_id,
-          'Welcome to CreatorSpace! 🎉',
-          'Your account has been fully approved. You can now start receiving bookings!'
-        );
-        await this.pool.query('UPDATE vendors SET welcome_sent = true WHERE id = $1', [user.vendor_id]);
-      } catch (e) {
-        console.error('Failed to send welcome notification');
-      }
+      setTimeout(async () => {
+        try {
+          await this.oneSignalService.sendVendorNotification(
+            user.vendor_id,
+            'Welcome to CreatorSpace! 🎉',
+            'Your account has been fully approved. You can now start receiving bookings!'
+          );
+          await this.pool.query('UPDATE vendors SET welcome_sent = true WHERE id = $1', [user.vendor_id]);
+        } catch (e) {
+          console.error('Failed to send welcome notification');
+        }
+      }, 4000);
     }
 
     const payload = { sub: user.id, email: user.email };
@@ -388,16 +390,19 @@ export class AuthService {
 
       // Send welcome notification if it's the first time they log in after getting approved via Google Auth
       if (user.onboarding_status === 'Completed' && user.verification_status === 'Approved' && user.welcome_sent === false) {
-        try {
-          await this.oneSignalService.sendVendorNotification(
-            user.vendor_id,
-            'Welcome to CreatorSpace! 🎉',
-            'Your account has been fully approved. You can now start receiving bookings!'
-          );
-          await client.query('UPDATE vendors SET welcome_sent = true WHERE id = $1', [user.vendor_id]);
-        } catch (e) {
-          console.error('Failed to send welcome notification');
-        }
+        setTimeout(async () => {
+          try {
+            await this.oneSignalService.sendVendorNotification(
+              user.vendor_id,
+              'Welcome to CreatorSpace! 🎉',
+              'Your account has been fully approved. You can now start receiving bookings!'
+            );
+            // using pool instead of client here since client might be released
+            await this.pool.query('UPDATE vendors SET welcome_sent = true WHERE id = $1', [user.vendor_id]);
+          } catch (e) {
+            console.error('Failed to send welcome notification');
+          }
+        }, 4000);
       }
 
       const jwtPayload = { sub: user.id, email: user.email };
@@ -511,16 +516,18 @@ export class AuthService {
 
       // If this is the first login after approval, send a welcome notification
       if (user.onboarding_status === 'Completed' && user.verification_status === 'Approved' && user.welcome_sent === false) {
-        try {
-          await this.oneSignalService.sendVendorNotification(
-            user.vendor_id,
-            'Welcome to CreatorSpace! 🎉',
-            'Your account has been fully approved. You can now start receiving bookings!'
-          );
-          await this.pool.query('UPDATE vendors SET welcome_sent = true WHERE id = $1', [user.vendor_id]);
-        } catch (e) {
-          console.error('Failed to send welcome notification');
-        }
+        setTimeout(async () => {
+          try {
+            await this.oneSignalService.sendVendorNotification(
+              user.vendor_id,
+              'Welcome to CreatorSpace! 🎉',
+              'Your account has been fully approved. You can now start receiving bookings!'
+            );
+            await this.pool.query('UPDATE vendors SET welcome_sent = true WHERE id = $1', [user.vendor_id]);
+          } catch (e) {
+            console.error('Failed to send welcome notification');
+          }
+        }, 4000);
       }
 
       const payload = { sub: user.id, email: user.email };

@@ -218,16 +218,20 @@ export class AuthService {
     if (user.onboarding_status === 'Completed' && user.verification_status === 'Approved' && user.welcome_sent === false) {
       setTimeout(async () => {
         try {
-          await this.oneSignalService.sendVendorNotification(
+          const res = await this.oneSignalService.sendVendorNotification(
             user.vendor_id,
             'Welcome to CreatorSpace! 🎉',
             'Your account has been fully approved. You can now start receiving bookings!'
           );
-          await this.pool.query('UPDATE vendors SET welcome_sent = true WHERE id = $1', [user.vendor_id]);
+          if (res && res.errors) {
+            console.error('OneSignal skipped notification:', res.errors);
+          } else {
+            await this.pool.query('UPDATE vendors SET welcome_sent = true WHERE id = $1', [user.vendor_id]);
+          }
         } catch (e) {
           console.error('Failed to send welcome notification');
         }
-      }, 4000);
+      }, 8000);
     }
 
     const payload = { sub: user.id, email: user.email };
@@ -392,17 +396,21 @@ export class AuthService {
       if (user.onboarding_status === 'Completed' && user.verification_status === 'Approved' && user.welcome_sent === false) {
         setTimeout(async () => {
           try {
-            await this.oneSignalService.sendVendorNotification(
+            const res = await this.oneSignalService.sendVendorNotification(
               user.vendor_id,
               'Welcome to CreatorSpace! 🎉',
               'Your account has been fully approved. You can now start receiving bookings!'
             );
-            // using pool instead of client here since client might be released
-            await this.pool.query('UPDATE vendors SET welcome_sent = true WHERE id = $1', [user.vendor_id]);
+            if (res && res.errors) {
+              console.error('OneSignal skipped notification:', res.errors);
+            } else {
+              // using pool instead of client here since client might be released
+              await this.pool.query('UPDATE vendors SET welcome_sent = true WHERE id = $1', [user.vendor_id]);
+            }
           } catch (e) {
             console.error('Failed to send welcome notification');
           }
-        }, 4000);
+        }, 8000);
       }
 
       const jwtPayload = { sub: user.id, email: user.email };
@@ -518,16 +526,20 @@ export class AuthService {
       if (user.onboarding_status === 'Completed' && user.verification_status === 'Approved' && user.welcome_sent === false) {
         setTimeout(async () => {
           try {
-            await this.oneSignalService.sendVendorNotification(
+            const res = await this.oneSignalService.sendVendorNotification(
               user.vendor_id,
               'Welcome to CreatorSpace! 🎉',
               'Your account has been fully approved. You can now start receiving bookings!'
             );
-            await this.pool.query('UPDATE vendors SET welcome_sent = true WHERE id = $1', [user.vendor_id]);
+            if (res && res.errors) {
+              console.error('OneSignal skipped notification:', res.errors);
+            } else {
+              await this.pool.query('UPDATE vendors SET welcome_sent = true WHERE id = $1', [user.vendor_id]);
+            }
           } catch (e) {
             console.error('Failed to send welcome notification');
           }
-        }, 4000);
+        }, 8000);
       }
 
       const payload = { sub: user.id, email: user.email };

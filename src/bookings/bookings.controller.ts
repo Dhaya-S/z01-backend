@@ -1,9 +1,43 @@
-import { Controller, Get, Post, Patch, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, InternalServerErrorException, BadRequestException } from '@nestjs/common';
 import { BookingsService } from './bookings.service';
+import { RazorpayService } from '../razorpay/razorpay.service';
 
 @Controller('bookings')
 export class BookingsController {
-  constructor(private readonly bookingsService: BookingsService) {}
+  constructor(
+    private readonly bookingsService: BookingsService,
+    private readonly razorpayService: RazorpayService,
+  ) {}
+
+  @Post('create-payment')
+  async createPayment(@Body('amount') amount: number) {
+    if (!amount || amount <= 0) {
+      throw new BadRequestException('Valid amount is required');
+    }
+    const order = await this.razorpayService.createOrder(amount);
+    return { success: true, data: order };
+  }
+
+  @Post('verify-and-create')
+  async verifyAndCreate(@Body() body: any) {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, ...bookingData } = body;
+    
+    // Only verify if razorpay data is provided (e.g. deposit was required)
+    if (razorpay_order_id && razorpay_payment_id && razorpay_signature) {
+      const isValid = this.razorpayService.verifyPayment(
+        razorpay_order_id,
+        razorpay_payment_id,
+        razorpay_signature,
+      );
+
+      if (!isValid) {
+        throw new BadRequestException('Payment verification failed');
+      }
+    }
+
+    const data = await this.bookingsService.create(body);
+    return { success: true, data };
+  }
 
   @Post()
   async create(@Body() body: any) {

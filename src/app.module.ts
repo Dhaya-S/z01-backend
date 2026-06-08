@@ -11,6 +11,7 @@ import { VendorsModule } from './vendors/vendors.module';
 import { UploadModule } from './upload/upload.module';
 import { OneSignalModule } from './onesignal/onesignal.module';
 import { AvailabilityModule } from './availability/availability.module';
+import { RazorpayModule } from './razorpay/razorpay.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { AvailabilityModule } from './availability/availability.module';
     UploadModule,
     OneSignalModule,
     AvailabilityModule,
+    RazorpayModule,
   ],
   controllers: [AppController],
   providers: [AppService],

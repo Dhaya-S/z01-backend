@@ -1,12 +1,14 @@
 import { Injectable, Inject, InternalServerErrorException } from '@nestjs/common';
 import { Pool } from 'pg';
 import { OneSignalService } from '../onesignal/onesignal.service';
+import { RazorpayService } from '../razorpay/razorpay.service';
 
 @Injectable()
 export class BookingsService {
   constructor(
     @Inject('DATABASE_POOL') private pool: Pool,
     private readonly onesignalService: OneSignalService,
+    private readonly razorpayService: RazorpayService,
   ) {}
 
   async create(body: any) {
@@ -19,6 +21,9 @@ export class BookingsService {
         total_amount,
         status,
         deposit_amount,
+        razorpay_order_id,
+        razorpay_payment_id,
+        razorpay_signature,
       } = body;
 
       // deposit_amount from request body (sent by user app at booking time)
@@ -26,8 +31,8 @@ export class BookingsService {
 
       const { rows } = await this.pool.query(
         `INSERT INTO bookings
-           (user_id, listing_id, start_date, end_date, total_amount, status, deposit_amount, deposit_status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           (user_id, listing_id, start_date, end_date, total_amount, status, deposit_amount, deposit_status, razorpay_order_id, razorpay_payment_id, razorpay_signature)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING *`,
         [
           user_id,
@@ -38,6 +43,9 @@ export class BookingsService {
           status || 'pending',
           deposit,
           deposit > 0 ? 'held' : null,
+          razorpay_order_id,
+          razorpay_payment_id,
+          razorpay_signature,
         ]
       );
       const booking = rows[0];
@@ -242,6 +250,15 @@ export class BookingsService {
             vendorCancelMsg,
             { type: 'system', bookingId: booking.id }
           );
+
+          // Process Razorpay Refund
+          if (hasDeposit && booking.razorpay_payment_id) {
+            try {
+              await this.razorpayService.refundPayment(booking.razorpay_payment_id, depositAmount);
+            } catch (refundError) {
+              console.error('Failed to issue Razorpay refund for booking', booking.id, refundError);
+            }
+          }
         }
       }
 

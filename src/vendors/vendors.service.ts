@@ -55,6 +55,7 @@ export class VendorsService {
           `SELECT r.rating,
                   r.comment as review_text,
                   r.user_name as user_name,
+                  vl.id as listing_id,
                   vl.category as listing_category
            FROM reviews r
            JOIN vendor_listings vl ON r.listing_id = vl.id

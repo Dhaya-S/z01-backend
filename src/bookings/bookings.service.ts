@@ -159,7 +159,6 @@ export class BookingsService {
 
       let newDepositStatus = booking.deposit_status;
       if (hasDeposit) {
-        if (isConfirmed) newDepositStatus = 'released_to_vendor';
         if (isCancelled) newDepositStatus = 'refunded_to_user';
       }
 
@@ -185,17 +184,8 @@ export class BookingsService {
         const depositStr =
           hasDeposit ? ` ₹${depositAmount.toFixed(0)} security deposit` : '';
 
-        // ── 5a. CONFIRM → credit vendor_earnings + notify user ───────────────
+        // ── 5a. CONFIRM → notify user ───────────────
         if (isConfirmed) {
-          // Record deposit in vendor_earnings
-          if (hasDeposit) {
-            await this.pool.query(
-              `INSERT INTO vendor_earnings (vendor_id, booking_id, amount, type, status)
-               VALUES ($1, $2, $3, 'deposit', 'pending')`,
-              [vendor_id, bookingId, depositAmount]
-            );
-          }
-
           // Notify user: booking confirmed
           const userMsg = hasDeposit
             ? `Your booking for ${itemName} has been confirmed by the vendor. The${depositStr} will be held until booking completion.`
@@ -204,25 +194,6 @@ export class BookingsService {
             'INSERT INTO notifications (user_id, title, body) VALUES ($1, $2, $3)',
             [booking.user_id, 'Booking Confirmed', userMsg]
           );
-
-          // Notify vendor: deposit credited
-          if (hasDeposit) {
-            await this.pool.query(
-              'INSERT INTO vendor_notifications (vendor_id, type, title, body) VALUES ($1, $2, $3, $4)',
-              [
-                vendor_id,
-                'earnings',
-                'Deposit Added to Earnings',
-                `The${depositStr} from the ${itemName} booking has been added to your earnings.`,
-              ]
-            );
-            await this.onesignalService.sendVendorNotification(
-              vendor_id,
-              'Deposit Added to Earnings',
-              `The${depositStr} from the ${itemName} booking has been added to your earnings.`,
-              { type: 'earnings', bookingId: booking.id }
-            );
-          }
         }
 
         // ── 5b. CANCEL → refund deposit + notify both parties ─────────────────
@@ -266,6 +237,90 @@ export class BookingsService {
     } catch (error) {
       console.error(error);
       throw new InternalServerErrorException('Failed to update booking status');
+    }
+  }
+  async markAsDelivered(bookingId: string, urls: string[]) {
+    try {
+      const urlsJson = JSON.stringify(urls);
+      const { rows } = await this.pool.query(
+        `UPDATE bookings
+         SET status = 'delivered', delivery_proof_urls = $1
+         WHERE id = $2
+         RETURNING *`,
+        [urlsJson, bookingId]
+      );
+      if (rows.length === 0) throw new InternalServerErrorException('Booking not found');
+      const booking = rows[0];
+
+      // Notify customer
+      await this.pool.query(
+        'INSERT INTO notifications (user_id, title, body) VALUES ($1, $2, $3)',
+        [booking.user_id, 'Delivery Confirmation', 'Vendor has delivered your booking. Please confirm delivery.']
+      );
+
+      return booking;
+    } catch (error) {
+      console.error(error);
+      throw new InternalServerErrorException('Failed to mark as delivered');
+    }
+  }
+
+  async acceptDelivery(bookingId: string) {
+    try {
+      // 1. Fetch booking and listing
+      const bookingRes = await this.pool.query('SELECT * FROM bookings WHERE id = $1', [bookingId]);
+      if (bookingRes.rows.length === 0) throw new InternalServerErrorException('Booking not found');
+      const booking = bookingRes.rows[0];
+
+      const depositAmount = parseFloat(booking.deposit_amount ?? 0) || 0;
+      const hasDeposit = depositAmount > 0;
+
+      // 2. Update booking status
+      const { rows } = await this.pool.query(
+        `UPDATE bookings
+         SET status = 'completed', deposit_status = $1
+         WHERE id = $2
+         RETURNING *`,
+        [hasDeposit ? 'released_to_vendor' : booking.deposit_status, bookingId]
+      );
+      const updatedBooking = rows[0];
+
+      // 3. Process deposit
+      const listingRes = await this.pool.query(
+        'SELECT vendor_id, listing_title FROM vendor_listings WHERE id = $1',
+        [booking.listing_id]
+      );
+
+      if (listingRes.rows.length > 0) {
+        const { vendor_id, listing_title } = listingRes.rows[0];
+        const itemName = listing_title || 'an item';
+        const depositStr = hasDeposit ? ` ₹${depositAmount.toFixed(0)} security deposit` : '';
+
+        if (hasDeposit) {
+          // Record deposit in vendor_earnings
+          await this.pool.query(
+            `INSERT INTO vendor_earnings (vendor_id, booking_id, amount, type, status)
+             VALUES ($1, $2, $3, 'deposit', 'pending')`,
+            [vendor_id, bookingId, depositAmount]
+          );
+
+          // Notify vendor
+          await this.pool.query(
+            'INSERT INTO vendor_notifications (vendor_id, type, title, body) VALUES ($1, $2, $3, $4)',
+            [vendor_id, 'earnings', 'Deposit Added to Earnings', `The customer accepted delivery. The${depositStr} from the ${itemName} booking has been added to your earnings.`]
+          );
+          await this.onesignalService.sendVendorNotification(
+            vendor_id,
+            'Deposit Added to Earnings',
+            `The customer accepted delivery. The${depositStr} from the ${itemName} booking has been added to your earnings.`,
+            { type: 'earnings', bookingId: booking.id }
+          );
+        }
+      }
+      return updatedBooking;
+    } catch (error) {
+      console.error(error);
+      throw new InternalServerErrorException('Failed to accept delivery');
     }
   }
 }

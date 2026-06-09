@@ -65,4 +65,19 @@ export class BookingsController {
     const data = await this.bookingsService.updateStatus(id, body.status);
     return { success: true, data };
   }
+
+  @Post(':id/deliver')
+  async markAsDelivered(@Param('id') id: string, @Body() body: { urls: string[] }) {
+    if (!body.urls || !Array.isArray(body.urls)) {
+      throw new BadRequestException('Image URLs are required');
+    }
+    const data = await this.bookingsService.markAsDelivered(id, body.urls);
+    return { success: true, data };
+  }
+
+  @Post(':id/accept-delivery')
+  async acceptDelivery(@Param('id') id: string) {
+    const data = await this.bookingsService.acceptDelivery(id);
+    return { success: true, data };
+  }
 }

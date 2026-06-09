@@ -307,7 +307,7 @@ export class BookingsService {
           // Notify vendor
           await this.pool.query(
             'INSERT INTO vendor_notifications (vendor_id, type, title, body) VALUES ($1, $2, $3, $4)',
-            [vendor_id, 'earnings', 'Deposit Added to Earnings', `The customer accepted delivery. The${depositStr} from the ${itemName} booking has been added to your earnings.`]
+            [vendor_id, 'earnings', 'Deposit Added to Earnings', `The customer accepted delivery. The${depositStr} from the ${itemName} booking has been added to your earnings and is being processed for payout.`]
           );
           await this.onesignalService.sendVendorNotification(
             vendor_id,
@@ -317,30 +317,30 @@ export class BookingsService {
           );
         }
 
-        // Record base booking amount in vendor_earnings
+        // Record base booking amount in vendor_earnings (as paid_offline)
         const bookingAmount = parseFloat(booking.total_amount ?? 0) || 0;
         if (bookingAmount > 0) {
           await this.pool.query(
             `INSERT INTO vendor_earnings (vendor_id, booking_id, amount, type, status)
-             VALUES ($1, $2, $3, 'booking', 'pending')`,
+             VALUES ($1, $2, $3, 'booking', 'paid_offline')`,
             [vendor_id, bookingId, bookingAmount]
           );
 
           await this.pool.query(
             'INSERT INTO vendor_notifications (vendor_id, type, title, body) VALUES ($1, $2, $3, $4)',
-            [vendor_id, 'earnings', 'Booking Earnings Added', `Your earnings of ₹${bookingAmount.toFixed(0)} for ${itemName} have been added to your account.`]
+            [vendor_id, 'earnings', 'Booking Earnings Added', `Your offline earnings of ₹${bookingAmount.toFixed(0)} for ${itemName} have been recorded.`]
           );
         }
 
-        // Trigger automated payout to vendor's bank account
-        const totalPayout = bookingAmount + (hasDeposit ? depositAmount : 0);
+        // Trigger automated payout to vendor's bank account for ONLY the deposit
+        const totalPayout = hasDeposit ? depositAmount : 0;
         if (totalPayout > 0) {
           // Fire and forget the payout to avoid blocking the user request
           this.razorpayService.processVendorPayout(vendor_id, totalPayout).then((result) => {
             if (result && result.id) {
-               // Update vendor_earnings status to 'paid' if successful
+               // Update deposit earnings status to 'paid' if successful
                this.pool.query(
-                 "UPDATE vendor_earnings SET status = 'paid' WHERE booking_id = $1 AND vendor_id = $2 AND status = 'pending'",
+                 "UPDATE vendor_earnings SET status = 'paid' WHERE booking_id = $1 AND vendor_id = $2 AND status = 'pending' AND type = 'deposit'",
                  [bookingId, vendor_id]
                );
             }

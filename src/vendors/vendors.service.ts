@@ -51,7 +51,6 @@ export class VendorsService {
            ORDER BY b.created_at DESC`,
           [vendorId]
         ),
-        // Top 3 recent reviews
         this.pool.query(
           `SELECT r.rating,
                   r.comment as review_text,
@@ -60,8 +59,7 @@ export class VendorsService {
            FROM reviews r
            JOIN vendor_listings vl ON r.listing_id = vl.id
            WHERE vl.vendor_id = $1
-           ORDER BY r.created_at DESC
-           LIMIT 3`,
+           ORDER BY r.created_at DESC`,
           [vendorId]
         ),
         // Aggregated rating stats

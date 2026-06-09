@@ -316,6 +316,21 @@ export class BookingsService {
             { type: 'earnings', bookingId: booking.id }
           );
         }
+
+        // Record base booking amount in vendor_earnings
+        const bookingAmount = parseFloat(booking.total_amount ?? 0) || 0;
+        if (bookingAmount > 0) {
+          await this.pool.query(
+            `INSERT INTO vendor_earnings (vendor_id, booking_id, amount, type, status)
+             VALUES ($1, $2, $3, 'booking', 'pending')`,
+            [vendor_id, bookingId, bookingAmount]
+          );
+
+          await this.pool.query(
+            'INSERT INTO vendor_notifications (vendor_id, type, title, body) VALUES ($1, $2, $3, $4)',
+            [vendor_id, 'earnings', 'Booking Earnings Added', `Your earnings of ₹${bookingAmount.toFixed(0)} for ${itemName} have been added to your account.`]
+          );
+        }
       }
       return updatedBooking;
     } catch (error) {

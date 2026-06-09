@@ -53,22 +53,23 @@ export class VendorsService {
         ),
         // Top 3 recent reviews
         this.pool.query(
-          `SELECT r.*,
-                  u.name as user_name,
+          `SELECT r.rating,
+                  r.comment as review_text,
+                  r.user_name as user_name,
                   vl.category as listing_category
-           FROM vendor_reviews r
-           LEFT JOIN users u ON r.user_id = u.id
-           LEFT JOIN vendor_listings vl ON r.listing_id = vl.id
-           WHERE r.vendor_id = $1
+           FROM reviews r
+           JOIN vendor_listings vl ON r.listing_id = vl.id
+           WHERE vl.vendor_id = $1
            ORDER BY r.created_at DESC
            LIMIT 3`,
           [vendorId]
         ),
         // Aggregated rating stats
         this.pool.query(
-          `SELECT COUNT(id) as total_reviews, AVG(rating) as avg_rating
-           FROM vendor_reviews
-           WHERE vendor_id = $1`,
+          `SELECT COUNT(r.id) as total_reviews, AVG(r.rating) as avg_rating
+           FROM reviews r
+           JOIN vendor_listings vl ON r.listing_id = vl.id
+           WHERE vl.vendor_id = $1`,
           [vendorId]
         ),
         // Unread notifications count

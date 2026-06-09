@@ -80,4 +80,16 @@ export class BookingsController {
     const data = await this.bookingsService.acceptDelivery(id);
     return { success: true, data };
   }
+
+  @Post(':id/issues')
+  async reportIssue(
+    @Param('id') id: string,
+    @Body() body: { vendor_id: number; description: string; urls?: string[] }
+  ) {
+    if (!body.vendor_id || !body.description) {
+      throw new BadRequestException('vendor_id and description are required');
+    }
+    const data = await this.bookingsService.reportIssue(id, body.vendor_id, body.description, body.urls || []);
+    return { success: true, data };
+  }
 }

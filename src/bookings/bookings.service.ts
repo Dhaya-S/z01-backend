@@ -331,11 +331,55 @@ export class BookingsService {
             [vendor_id, 'earnings', 'Booking Earnings Added', `Your earnings of ₹${bookingAmount.toFixed(0)} for ${itemName} have been added to your account.`]
           );
         }
+
+        // Trigger automated payout to vendor's bank account
+        const totalPayout = bookingAmount + (hasDeposit ? depositAmount : 0);
+        if (totalPayout > 0) {
+          // Fire and forget the payout to avoid blocking the user request
+          this.razorpayService.processVendorPayout(vendor_id, totalPayout).then((result) => {
+            if (result && result.id) {
+               // Update vendor_earnings status to 'paid' if successful
+               this.pool.query(
+                 "UPDATE vendor_earnings SET status = 'paid' WHERE booking_id = $1 AND vendor_id = $2 AND status = 'pending'",
+                 [bookingId, vendor_id]
+               );
+            }
+          });
+        }
       }
       return updatedBooking;
     } catch (error) {
       console.error(error);
       throw new InternalServerErrorException('Failed to accept delivery');
+    }
+  }
+
+  async reportIssue(bookingId: string, vendorId: number, description: string, urls: string[]) {
+    try {
+      const urlsJson = JSON.stringify(urls);
+      const { rows } = await this.pool.query(
+        `INSERT INTO booking_issues (booking_id, vendor_id, issue_description, proof_urls)
+         VALUES ($1, $2, $3, $4)
+         RETURNING *`,
+        [bookingId, vendorId, description, urlsJson]
+      );
+      
+      const issue = rows[0];
+
+      // Notify customer that an issue has been reported
+      const bookingRes = await this.pool.query('SELECT user_id FROM bookings WHERE id = $1', [bookingId]);
+      if (bookingRes.rows.length > 0) {
+        const userId = bookingRes.rows[0].user_id;
+        await this.pool.query(
+          'INSERT INTO notifications (user_id, title, body) VALUES ($1, $2, $3)',
+          [userId, 'Delivery Issue Reported', 'The vendor has reported an issue with your delivery. Our support team will review it.']
+        );
+      }
+
+      return issue;
+    } catch (error) {
+      console.error('Failed to report issue:', error);
+      throw new InternalServerErrorException('Failed to report delivery issue');
     }
   }
 }

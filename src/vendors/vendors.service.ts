@@ -15,8 +15,8 @@ export class VendorsService {
       if (vendorRes.rows.length === 0) throw new NotFoundException('Vendor not found');
       const vendorId = vendorRes.rows[0].id;
 
-      // Step 2: Load profile, listings, bookings & reviews in parallel
-      const [profileRes, listingsRes, bookingsRes, reviewsRes, ratingRes] = await Promise.all([
+      // Step 2: Load profile, listings, bookings, reviews, rating, and unread notifications in parallel
+      const [profileRes, listingsRes, bookingsRes, reviewsRes, ratingRes, unreadRes] = await Promise.all([
         // Vendor profile with documents and bank details
         this.pool.query(
           `SELECT v.*,
@@ -71,10 +71,18 @@ export class VendorsService {
            WHERE vendor_id = $1`,
           [vendorId]
         ),
+        // Unread notifications count
+        this.pool.query(
+          `SELECT COUNT(id) as unread_count
+           FROM vendor_notifications
+           WHERE vendor_id = $1 AND (is_read = false OR is_read IS NULL)`,
+          [vendorId]
+        ),
       ]);
 
       const v = profileRes.rows[0];
       const stats = ratingRes.rows[0] || { total_reviews: 0, avg_rating: null };
+      const unreadCount = parseInt(unreadRes.rows[0]?.unread_count || '0', 10);
 
       return {
         vendor: {
@@ -87,6 +95,7 @@ export class VendorsService {
         listings: listingsRes.rows,
         bookings: bookingsRes.rows,
         reviews: reviewsRes.rows,
+        unread_notifications_count: unreadCount,
       };
     } catch (error) {
       if (error instanceof NotFoundException) throw error;

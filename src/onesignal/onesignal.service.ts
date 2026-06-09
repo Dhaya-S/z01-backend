@@ -52,6 +52,44 @@ export class OneSignalService {
     }
   }
 
+  async sendUserNotification(userId: string, title: string, body: string, data?: any) {
+    try {
+      const payload = {
+        app_id: this.appId,
+        target_channel: 'push',
+        include_aliases: {
+          // Supporting both typical patterns for user external IDs
+          external_id: [`user_${userId}`, `${userId}`],
+        },
+        headings: { en: title },
+        contents: { en: body },
+        data: data || {},
+        priority: 10,
+        ios_sound: 'default',
+        android_sound: 'default',
+        android_visibility: 1,
+      };
+
+      const response = await axios.post(this.baseUrl, payload, {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: this.restApiKey.startsWith('os_v2_app_')
+            ? `Key ${this.restApiKey}`
+            : `Basic ${this.restApiKey}`,
+        },
+      });
+
+      this.logger.log(`OneSignal notification sent to user_${userId}: ${JSON.stringify(response.data)}`);
+      return response.data;
+    } catch (error) {
+      this.logger.error(
+        `Failed to send OneSignal notification to user_${userId}`,
+        error.response?.data || error.message,
+      );
+      // We don't throw here to avoid failing the main transaction if push fails
+    }
+  }
+
   // 1. New Booking Notification
   async sendNewBookingNotification(vendorId: string, bookingId: string, customerName: string, serviceName: string) {
     const title = '🎉 New Booking Received!';

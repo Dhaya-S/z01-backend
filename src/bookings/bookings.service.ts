@@ -258,6 +258,13 @@ export class BookingsService {
         [booking.user_id, 'Delivery Confirmation', 'Vendor has delivered your booking. Please confirm delivery.']
       );
 
+      await this.onesignalService.sendUserNotification(
+        booking.user_id,
+        'Delivery Confirmation',
+        'Vendor has delivered your booking. Please confirm delivery.',
+        { type: 'delivery', bookingId: booking.id }
+      );
+
       return booking;
     } catch (error) {
       console.error(error);

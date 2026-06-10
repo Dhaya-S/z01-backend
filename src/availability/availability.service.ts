@@ -240,7 +240,7 @@ export class AvailabilityService {
 
     // Get all listings for this category
     const listingsRes = await this.pool.query(`
-      SELECT id, listing_title, category, quantity, status
+      SELECT id, listing_title, category, quantity, status, image_1
       FROM vendor_listings 
       WHERE vendor_id = $1 AND category = $2 AND status ILIKE 'active'
     `, [vendorId, category]);

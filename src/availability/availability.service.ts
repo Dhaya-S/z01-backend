@@ -66,10 +66,9 @@ export class AvailabilityService {
 
     // Fetch today's schedule for the dashboard overview
     const todayEventsRes = await this.pool.query(`
-      SELECT b.start_date, b.end_date, vl.name as title, vl.category, u.name as subtitle
+      SELECT b.start_date, b.end_date, vl.listing_title as title, vl.category, 'User' as subtitle
       FROM bookings b
       JOIN vendor_listings vl ON b.listing_id = vl.id
-      LEFT JOIN users u ON b.user_id = u.id
       WHERE vl.vendor_id = $1
       AND b.start_date::DATE <= $2::DATE AND b.end_date::DATE >= $2::DATE
       AND b.status != 'cancelled'
@@ -120,10 +119,9 @@ export class AvailabilityService {
 
     // Fetch bookings for this day
     const bookingsRes = await this.pool.query(`
-      SELECT b.start_date, b.end_date, b.status, vl.name as listing_name, u.name as user_name
+      SELECT b.start_date, b.end_date, b.status, vl.listing_title as listing_name, 'User' as user_name
       FROM bookings b
       JOIN vendor_listings vl ON b.listing_id = vl.id
-      LEFT JOIN users u ON b.user_id = u.id
       WHERE vl.vendor_id = $1 AND vl.category = $2
       AND b.start_date::DATE <= $3::DATE AND b.end_date::DATE >= $3::DATE
       AND b.status != 'cancelled'

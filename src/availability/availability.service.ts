@@ -136,7 +136,7 @@ export class AvailabilityService {
 
     // Fetch blocks for this day
     const blocksRes = await this.pool.query(`
-      SELECT start_date, end_date, reason
+      SELECT id, reason, start_date, end_date, listing_id, units
       FROM vendor_availability_blocks 
       WHERE vendor_id = $1 AND category = $2 
       AND start_date::DATE <= $3::DATE AND end_date::DATE >= $3::DATE
@@ -160,6 +160,8 @@ export class AvailabilityService {
     // Add blocks
     for (const b of blocksRes.rows) {
       events.push({
+        listing_id: b.listing_id,
+        units: b.units,
         startTime: b.start_date,
         endTime: b.end_date,
         type: 'Unavailable',
@@ -256,11 +258,11 @@ export class AvailabilityService {
 
     // Get blocks (maintenance) for today
     const blocksRes = await this.pool.query(`
-      SELECT category, reason, COUNT(*) as count
+      SELECT listing_id, reason, SUM(units) as count
       FROM vendor_availability_blocks
       WHERE vendor_id = $1 AND category = $2 
       AND start_date::DATE <= $3::DATE AND end_date::DATE >= $3::DATE
-      GROUP BY category, reason
+      GROUP BY listing_id, reason
     `, [vendorId, category, todayStr]);
 
     const bookingsMap: any = {};
@@ -268,11 +270,10 @@ export class AvailabilityService {
       bookingsMap[r.listing_id] = { count: parseInt(r.count, 10), next_pickup: r.next_pickup };
     });
 
-    let categoryMaintenance = 0;
+    const blocksMap: any = {};
     blocksRes.rows.forEach((r: any) => {
-      if (r.reason === 'Maintenance') {
-        categoryMaintenance += parseInt(r.count, 10);
-      }
+      if (!blocksMap[r.listing_id]) blocksMap[r.listing_id] = 0;
+      blocksMap[r.listing_id] += parseInt(r.count || r.units || '0', 10);
     });
 
     const formatTime = (d: any) => {
@@ -291,8 +292,7 @@ export class AvailabilityService {
       const totalCount = item.quantity || 1;
       const bInfo = bookingsMap[item.id] || { count: 0, next_pickup: null };
       const rentedCount = bInfo.count;
-      // Distribute maintenance blocks equally for now, or just track category-level maintenance if items aren't mapped
-      const maintenanceCount = 0; // We don't have item-specific maintenance blocks yet, it's category level in DB
+      const maintenanceCount = blocksMap[item.id] || 0;
       
       const availableCount = Math.max(0, totalCount - rentedCount - maintenanceCount);
       const isAvailable = availableCount > 0;
@@ -315,14 +315,14 @@ export class AvailabilityService {
   }
 
   async createBlock(vendorId: number, dto: any) {
-    const { category, dates, reason } = dto;
+    const { category, dates, reason, listing_id, units } = dto;
     for (const date of dates) {
       const startDate = `${date} 00:00:00`;
       const endDate = `${date} 23:59:59`;
       await this.pool.query(`
-        INSERT INTO vendor_availability_blocks (vendor_id, category, start_date, end_date, reason)
-        VALUES ($1, $2, $3, $4, $5)
-      `, [vendorId, category, startDate, endDate, reason]);
+        INSERT INTO vendor_availability_blocks (vendor_id, category, start_date, end_date, reason, listing_id, units)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `, [vendorId, category, startDate, endDate, reason, listing_id || null, units || 1]);
     }
     return { success: true, message: 'Blocks created successfully' };
   }

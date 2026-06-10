@@ -301,6 +301,7 @@ export class AvailabilityService {
         id: item.id,
         listing_title: item.listing_title,
         category: item.category,
+        image_1: item.image_1,
         totalCount,
         availableCount,
         rentedCount,

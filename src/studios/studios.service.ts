@@ -8,7 +8,14 @@ export class StudiosService {
   async findAll(vendorId?: number) {
     try {
       // Always filter to 'Studio' category to prevent cross-category data leakage
-      let query = "SELECT * FROM vendor_listings WHERE category = 'Studio'";
+      let query = `
+        SELECT vl.*, 
+        (SELECT COALESCE(json_agg(DISTINCT TO_CHAR(vab.start_date, 'YYYY-MM-DD')), '[]') 
+         FROM vendor_availability_blocks vab 
+         WHERE vab.vendor_id = vl.vendor_id AND vab.category = vl.category) as blocked_dates
+        FROM vendor_listings vl 
+        WHERE vl.category = 'Studio'
+      `;
       const params: any[] = [];
 
       if (vendorId) {
@@ -26,7 +33,14 @@ export class StudiosService {
 
   async findOne(id: number) {
     try {
-      const { rows } = await this.pool.query('SELECT * FROM vendor_listings WHERE id = $1', [id]);
+      const { rows } = await this.pool.query(`
+        SELECT vl.*, 
+        (SELECT COALESCE(json_agg(DISTINCT TO_CHAR(vab.start_date, 'YYYY-MM-DD')), '[]') 
+         FROM vendor_availability_blocks vab 
+         WHERE vab.vendor_id = vl.vendor_id AND vab.category = vl.category) as blocked_dates
+        FROM vendor_listings vl 
+        WHERE vl.id = $1
+      `, [id]);
       if (rows.length === 0) {
         throw new NotFoundException('Listing not found');
       }

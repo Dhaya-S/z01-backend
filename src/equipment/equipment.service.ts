@@ -7,7 +7,14 @@ export class EquipmentService {
 
   async findAll(vendorId?: number) {
     try {
-      let query = 'SELECT * FROM vendor_listings WHERE category = $1';
+      let query = `
+        SELECT vl.*, 
+        (SELECT COALESCE(json_agg(DISTINCT TO_CHAR(vab.start_date, 'YYYY-MM-DD')), '[]') 
+         FROM vendor_availability_blocks vab 
+         WHERE vab.vendor_id = vl.vendor_id AND vab.category = vl.category) as blocked_dates
+        FROM vendor_listings vl 
+        WHERE vl.category = $1
+      `;
       const params: any[] = ['Equipment'];
 
       if (vendorId) {
@@ -25,7 +32,14 @@ export class EquipmentService {
 
   async findOne(id: number) {
     try {
-      const { rows } = await this.pool.query('SELECT * FROM vendor_listings WHERE id = $1 AND category = $2', [id, 'Equipment']);
+      const { rows } = await this.pool.query(`
+        SELECT vl.*, 
+        (SELECT COALESCE(json_agg(DISTINCT TO_CHAR(vab.start_date, 'YYYY-MM-DD')), '[]') 
+         FROM vendor_availability_blocks vab 
+         WHERE vab.vendor_id = vl.vendor_id AND vab.category = vl.category) as blocked_dates
+        FROM vendor_listings vl 
+        WHERE vl.id = $1 AND vl.category = $2
+      `, [id, 'Equipment']);
       if (rows.length === 0) {
         throw new NotFoundException('Equipment not found');
       }

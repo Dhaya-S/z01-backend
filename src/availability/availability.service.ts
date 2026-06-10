@@ -5,6 +5,13 @@ import { Pool } from 'pg';
 export class AvailabilityService {
   constructor(@Inject('DATABASE_POOL') private pool: Pool) {}
 
+  async getVendorId(userSub: string): Promise<number> {
+    if (!userSub) return 1;
+    const res = await this.pool.query('SELECT id FROM vendors WHERE user_id = $1', [userSub]);
+    if (res.rows.length > 0) return res.rows[0].id;
+    return 1;
+  }
+
   async getDashboardStats(vendorId: number) {
     const todayStr = new Date().toISOString().split('T')[0];
 
@@ -12,7 +19,7 @@ export class AvailabilityService {
     const listingsRes = await this.pool.query(`
       SELECT category, COUNT(*) as count 
       FROM vendor_listings 
-      WHERE vendor_id = $1 AND status = 'Active'
+      WHERE vendor_id = $1 AND status ILIKE 'active'
       GROUP BY category
     `, [vendorId]);
     
@@ -235,7 +242,7 @@ export class AvailabilityService {
     const listingsRes = await this.pool.query(`
       SELECT id, listing_title, category, quantity, status
       FROM vendor_listings 
-      WHERE vendor_id = $1 AND category = $2 AND status = 'Active'
+      WHERE vendor_id = $1 AND category = $2 AND status ILIKE 'active'
     `, [vendorId, category]);
 
     // Get all active bookings for today

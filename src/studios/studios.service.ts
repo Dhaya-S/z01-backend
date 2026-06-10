@@ -47,7 +47,7 @@ export class StudiosService {
         'location_address', 'street_address', 'delivery_available', 'id_verification_required',
         'min_age', 'insurance_required', 'rules', 'terms_pdf_url',
         'image_1', 'image_2', 'image_3', 'image_4', 'image_5', 'status',
-        'location_lat', 'location_lng'
+        'location_lat', 'location_lng', 'equipments', 'manpower'
       ];
 
       const values = [
@@ -62,7 +62,8 @@ export class StudiosService {
         data.insurance_required || false, data.rules, data.terms_pdf_url,
         data.image_1, data.image_2, data.image_3, data.image_4, data.image_5,
         data.status || 'active',
-        data.location_lat || null, data.location_lng || null
+        data.location_lat || null, data.location_lng || null,
+        JSON.stringify(data.equipments || []), JSON.stringify(data.manpower || [])
       ];
 
       const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
@@ -86,7 +87,7 @@ export class StudiosService {
         'location_address', 'street_address', 'delivery_available', 'id_verification_required',
         'min_age', 'insurance_required', 'rules', 'terms_pdf_url',
         'image_1', 'image_2', 'image_3', 'image_4', 'image_5', 'status',
-        'location_lat', 'location_lng'
+        'location_lat', 'location_lng', 'equipments', 'manpower'
       ];
 
       const values = [
@@ -101,7 +102,8 @@ export class StudiosService {
         data.insurance_required || false, data.rules, data.terms_pdf_url,
         data.image_1, data.image_2, data.image_3, data.image_4, data.image_5,
         data.status || 'active',
-        data.location_lat || null, data.location_lng || null
+        data.location_lat || null, data.location_lng || null,
+        JSON.stringify(data.equipments || []), JSON.stringify(data.manpower || [])
       ].map(v => v === undefined ? null : v);
 
       const sets = columns.map((col, i) => `${col} = $${i + 1}`).join(', ');

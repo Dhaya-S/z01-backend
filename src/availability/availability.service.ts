@@ -227,6 +227,85 @@ export class AvailabilityService {
     return { events: formattedEvents, blocks: blocksRes.rows };
   }
 
+  async getCategoryInventory(vendorId: number, category: string) {
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    // Get all listings for this category
+    const listingsRes = await this.pool.query(`
+      SELECT id, listing_title, category, quantity, status
+      FROM vendor_listings 
+      WHERE vendor_id = $1 AND category = $2 AND status = 'Active'
+    `, [vendorId, category]);
+
+    // Get all active bookings for today
+    const bookingsRes = await this.pool.query(`
+      SELECT listing_id, COUNT(*) as count, MIN(end_date) as next_pickup
+      FROM bookings
+      WHERE start_date::DATE <= $1::DATE AND end_date::DATE >= $1::DATE
+      AND status IN ('pending', 'confirmed')
+      GROUP BY listing_id
+    `, [todayStr]);
+
+    // Get blocks (maintenance) for today
+    const blocksRes = await this.pool.query(`
+      SELECT category, reason, COUNT(*) as count
+      FROM vendor_availability_blocks
+      WHERE vendor_id = $1 AND category = $2 
+      AND start_date::DATE <= $3::DATE AND end_date::DATE >= $3::DATE
+      GROUP BY category, reason
+    `, [vendorId, category, todayStr]);
+
+    const bookingsMap: any = {};
+    bookingsRes.rows.forEach((r: any) => {
+      bookingsMap[r.listing_id] = { count: parseInt(r.count, 10), next_pickup: r.next_pickup };
+    });
+
+    let categoryMaintenance = 0;
+    blocksRes.rows.forEach((r: any) => {
+      if (r.reason === 'Maintenance') {
+        categoryMaintenance += parseInt(r.count, 10);
+      }
+    });
+
+    const formatTime = (d: any) => {
+      if (!d) return 'No upcoming pickups';
+      const dt = new Date(d);
+      let hours = dt.getHours();
+      const minutes = dt.getMinutes();
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours ? hours : 12; 
+      const minStr = minutes < 10 ? '0'+minutes : minutes;
+      return `Today, ${hours}:${minStr} ${ampm}`;
+    };
+
+    const results = listingsRes.rows.map((item: any) => {
+      const totalCount = item.quantity || 1;
+      const bInfo = bookingsMap[item.id] || { count: 0, next_pickup: null };
+      const rentedCount = bInfo.count;
+      // Distribute maintenance blocks equally for now, or just track category-level maintenance if items aren't mapped
+      const maintenanceCount = 0; // We don't have item-specific maintenance blocks yet, it's category level in DB
+      
+      const availableCount = Math.max(0, totalCount - rentedCount - maintenanceCount);
+      const isAvailable = availableCount > 0;
+      
+      return {
+        id: item.id,
+        listing_title: item.listing_title,
+        category: item.category,
+        totalCount,
+        availableCount,
+        rentedCount,
+        maintenanceCount,
+        status: isAvailable ? 'Available' : (rentedCount > 0 ? 'Fully Booked' : 'Inactive'),
+        nextPickup: formatTime(bInfo.next_pickup),
+        activity: rentedCount > 0 ? `${rentedCount} active rentals` : 'Ready to rent'
+      };
+    });
+
+    return results;
+  }
+
   async createBlock(vendorId: number, dto: any) {
     const { category, dates, reason } = dto;
     for (const date of dates) {

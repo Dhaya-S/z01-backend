@@ -23,6 +23,12 @@ export class AvailabilityController {
     return this.availabilityService.getSchedule(id, date || new Date().toISOString(), category || 'Studio');
   }
 
+  @Get('inventory')
+  async getInventory(@Request() req, @Query('category') category: string) {
+    const id = req.user?.vendorId || 1;
+    return this.availabilityService.getCategoryInventory(id, category || 'Studio');
+  }
+
   @Post('block')
   async createBlock(@Request() req, @Body() dto: any) {
     const id = req.user?.vendorId || 1;

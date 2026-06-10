@@ -1,9 +1,17 @@
-import { Injectable, Inject, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { Injectable, Inject, InternalServerErrorException, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Pool } from 'pg';
 
 @Injectable()
-export class VendorsService {
+export class VendorsService implements OnModuleInit {
   constructor(@Inject('DATABASE_POOL') private pool: Pool) {}
+
+  async onModuleInit() {
+    try {
+      await this.pool.query(`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS cover_photo TEXT;`);
+    } catch (e) {
+      console.error('Failed to add cover_photo column:', e);
+    }
+  }
 
   // ── Dashboard (single-request optimised load) ──────────────────────────────
   async getDashboardData(userId: string) {
@@ -121,14 +129,14 @@ export class VendorsService {
         companyName, contactPerson, phone, email,
         businessType, gstNumber,
         // New fields from 7-step onboarding
-        serviceTypes, bio, profilePhoto,
+        serviceTypes, bio, profilePhoto, coverPhoto,
         location,
         documents,
         bankDetails,
       } = details;
 
       const hasMainFields = companyName || contactPerson || phone || email ||
-        businessType || gstNumber || serviceTypes || bio || profilePhoto || location;
+        businessType || gstNumber || serviceTypes || bio || profilePhoto || coverPhoto || location;
 
       if (hasMainFields) {
         await this.pool.query(
@@ -142,8 +150,9 @@ export class VendorsService {
             service_types    = COALESCE($7,  service_types),
             bio              = COALESCE($8,  bio),
             profile_photo    = COALESCE($9,  profile_photo),
-            location         = COALESCE($10, location)
-          WHERE id = $11`,
+            location         = COALESCE($10, location),
+            cover_photo      = COALESCE($11, cover_photo)
+          WHERE id = $12`,
           [
             companyName, contactPerson, phone, email,
             businessType, gstNumber,
@@ -151,6 +160,7 @@ export class VendorsService {
             bio,
             profilePhoto,
             location ? JSON.stringify(location) : null,
+            coverPhoto,
             vendorId,
           ]
         );

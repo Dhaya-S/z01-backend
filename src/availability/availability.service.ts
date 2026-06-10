@@ -119,7 +119,7 @@ export class AvailabilityService {
 
     // Fetch bookings for this day
     const bookingsRes = await this.pool.query(`
-      SELECT b.start_date, b.end_date, b.status, vl.listing_title as listing_name, 'User' as user_name
+      SELECT b.start_date, b.end_date, b.status, vl.id as listing_id, vl.listing_title as listing_name, 'User' as user_name
       FROM bookings b
       JOIN vendor_listings vl ON b.listing_id = vl.id
       WHERE vl.vendor_id = $1 AND vl.category = $2
@@ -141,6 +141,7 @@ export class AvailabilityService {
     // Add bookings
     for (const b of bookingsRes.rows) {
       events.push({
+        listing_id: b.listing_id,
         startTime: b.start_date,
         endTime: b.end_date,
         type: 'Booked',

@@ -282,13 +282,14 @@ export class BookingsService {
       const depositAmount = parseFloat(booking.deposit_amount ?? 0) || 0;
       const hasDeposit = depositAmount > 0;
 
-      // 2. Update booking status
+      // 2. Update booking status and record platform fee (10% of deposit)
+      const platformFee = hasDeposit ? (depositAmount * 0.10) : 0;
       const { rows } = await this.pool.query(
         `UPDATE bookings
-         SET status = 'completed', deposit_status = $1
-         WHERE id = $2
+         SET status = 'completed', deposit_status = $1, platform_fee = $2
+         WHERE id = $3
          RETURNING *`,
-        [hasDeposit ? 'released_to_vendor' : booking.deposit_status, bookingId]
+        [hasDeposit ? 'released_to_vendor' : booking.deposit_status, platformFee, bookingId]
       );
       const updatedBooking = rows[0];
 
@@ -301,25 +302,28 @@ export class BookingsService {
       if (listingRes.rows.length > 0) {
         const { vendor_id, listing_title } = listingRes.rows[0];
         const itemName = listing_title || 'an item';
-        const depositStr = hasDeposit ? ` ₹${depositAmount.toFixed(0)} security deposit` : '';
+        
+        // Vendor gets 100% of the deposit (the 10% platform fee is kept by the platform)
+        const totalPayout = hasDeposit ? depositAmount : 0;
 
         if (hasDeposit) {
           // Record deposit in vendor_earnings
           await this.pool.query(
             `INSERT INTO vendor_earnings (vendor_id, booking_id, amount, type, status)
              VALUES ($1, $2, $3, 'deposit', 'pending')`,
-            [vendor_id, bookingId, depositAmount]
+            [vendor_id, bookingId, totalPayout]
           );
 
           // Notify vendor
+          const payoutNote = `The security deposit of ₹${totalPayout.toFixed(0)} from the ${itemName} booking has been added to your earnings and is being processed for payout.`;
           await this.pool.query(
             'INSERT INTO vendor_notifications (vendor_id, type, title, body) VALUES ($1, $2, $3, $4)',
-            [vendor_id, 'earnings', 'Deposit Added to Earnings', `The customer accepted delivery. The${depositStr} from the ${itemName} booking has been added to your earnings and is being processed for payout.`]
+            [vendor_id, 'earnings', 'Deposit Added to Earnings', payoutNote]
           );
           await this.onesignalService.sendVendorNotification(
             vendor_id,
             'Deposit Added to Earnings',
-            `The customer accepted delivery. The${depositStr} from the ${itemName} booking has been added to your earnings.`,
+            payoutNote,
             { type: 'earnings', bookingId: booking.id }
           );
         }
@@ -339,8 +343,7 @@ export class BookingsService {
           );
         }
 
-        // Trigger automated payout to vendor's bank account for ONLY the deposit
-        const totalPayout = hasDeposit ? depositAmount : 0;
+        // Trigger automated payout to vendor's bank account for the deposit (109% of deposit)
         if (totalPayout > 0) {
           // Fire and forget the payout to avoid blocking the user request
           this.razorpayService.processVendorPayout(vendor_id, totalPayout).then((result) => {

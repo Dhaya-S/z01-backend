@@ -63,6 +63,7 @@ export class VendorsService implements OnModuleInit {
           `SELECT r.rating,
                   r.comment as review_text,
                   r.user_name as user_name,
+                  r.images as images,
                   vl.id as listing_id,
                   vl.category as listing_category
            FROM reviews r

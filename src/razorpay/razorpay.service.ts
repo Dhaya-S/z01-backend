@@ -54,7 +54,7 @@ export class RazorpayService {
   async processVendorPayout(vendorId: number, amount: number): Promise<any> {
     try {
       // 1. Fetch vendor bank details and personal info
-      const vendorRes = await this.pool.query('SELECT name, email, phone FROM vendors WHERE id = $1', [vendorId]);
+      const vendorRes = await this.pool.query('SELECT contact_person, company_name, email, phone FROM vendors WHERE id = $1', [vendorId]);
       const bankRes = await this.pool.query('SELECT account_holder_name, account_number, ifsc_code FROM vendor_bank_details WHERE vendor_id = $1', [vendorId]);
       
       if (vendorRes.rows.length === 0 || bankRes.rows.length === 0) {
@@ -66,7 +66,7 @@ export class RazorpayService {
 
       // 2. Create Contact in Razorpay
       const contact = await this.razorpay.contacts.create({
-        name: bank.account_holder_name || vendor.name || `Vendor ${vendorId}`,
+        name: bank.account_holder_name || vendor.contact_person || vendor.company_name || `Vendor ${vendorId}`,
         email: vendor.email || `vendor_${vendorId}@example.com`,
         contact: vendor.phone || '9999999999',
         type: 'vendor',

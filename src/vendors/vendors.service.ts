@@ -71,7 +71,8 @@ export class VendorsService implements OnModuleInit {
                   r.images as images,
                   r.vendor_reply as vendor_reply,
                   vl.id as listing_id,
-                  vl.category as listing_category
+                  vl.category as listing_category,
+                  vl.listing_title as listing_title
            FROM reviews r
            JOIN vendor_listings vl ON r.listing_id = vl.id
            WHERE vl.vendor_id = $1

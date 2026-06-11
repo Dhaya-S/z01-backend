@@ -14,9 +14,19 @@ export class AvailabilityController {
   }
 
   @Get('schedule')
-  async getSchedule(@Request() req, @Query('date') date: string, @Query('category') category: string) {
+  async getSchedule(
+    @Request() req,
+    @Query('date') date: string,
+    @Query('category') category: string,
+    @Query('listingId') listingId?: string,
+  ) {
     const id = req.user?.vendorId || await this.availabilityService.getVendorId(req.user?.sub);
-    return this.availabilityService.getSchedule(id, date || new Date().toISOString(), category || 'Studio');
+    return this.availabilityService.getSchedule(
+      id,
+      date || new Date().toISOString(),
+      category || 'Studio',
+      listingId,
+    );
   }
 
   @Get('inventory')

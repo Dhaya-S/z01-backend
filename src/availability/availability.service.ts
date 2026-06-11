@@ -139,26 +139,40 @@ export class AvailabilityService {
     };
   }
 
-  async getSchedule(vendorId: number, date: string, category: string) {
+  async getSchedule(vendorId: number, date: string, category: string, listingId?: string) {
     const targetDate = new Date(date).toISOString().split('T')[0];
 
-    // Fetch bookings for this day
-    const bookingsRes = await this.pool.query(`
+    let bookingsQuery = `
       SELECT b.start_date, b.end_date, b.status, vl.id as listing_id, vl.listing_title as listing_name, 'User' as user_name
       FROM bookings b
       JOIN vendor_listings vl ON b.listing_id = vl.id
       WHERE vl.vendor_id = $1 AND vl.category = $2
       AND b.start_date::DATE <= $3::DATE AND b.end_date::DATE >= $3::DATE
       AND b.status != 'cancelled'
-    `, [vendorId, category, targetDate]);
+    `;
+    const bookingsParams: any[] = [vendorId, category, targetDate];
+    if (listingId) {
+      bookingsQuery += ` AND vl.id = $4`;
+      bookingsParams.push(listingId);
+    }
 
-    // Fetch blocks for this day
-    const blocksRes = await this.pool.query(`
+    // Fetch bookings for this day
+    const bookingsRes = await this.pool.query(bookingsQuery, bookingsParams);
+
+    let blocksQuery = `
       SELECT id, reason, start_date, end_date, listing_id, units
       FROM vendor_availability_blocks 
       WHERE vendor_id = $1 AND category = $2 
       AND start_date::DATE <= $3::DATE AND end_date::DATE >= $3::DATE
-    `, [vendorId, category, targetDate]);
+    `;
+    const blocksParams: any[] = [vendorId, category, targetDate];
+    if (listingId) {
+      blocksQuery += ` AND (listing_id = $4 OR listing_id IS NULL)`;
+      blocksParams.push(listingId);
+    }
+
+    // Fetch blocks for this day
+    const blocksRes = await this.pool.query(blocksQuery, blocksParams);
 
     // Format results to feed into the UI's timeline
     const events: any[] = [];
@@ -223,6 +237,8 @@ export class AvailabilityService {
 
       if (evEnd > currentTime) {
         formattedEvents.push({
+          listing_id: ev.listing_id,
+          units: ev.units,
           startTime: formatTime(Math.max(evStart, currentTime)),
           endTime: formatTime(Math.min(evEnd, endOfDay)),
           type: ev.type,

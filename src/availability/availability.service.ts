@@ -71,16 +71,26 @@ export class AvailabilityService {
       }
     });
 
-    // Fetch today's schedule for the dashboard overview
+    // Fetch today's schedule for the dashboard overview (bookings + availability blocks)
     const todayEventsRes = await this.pool.query(`
-      SELECT b.start_date, b.end_date, vl.listing_title as title, vl.category, 'User' as subtitle
-      FROM bookings b
-      JOIN vendor_listings vl ON b.listing_id = vl.id
-      WHERE vl.vendor_id = $1
-      AND b.start_date::DATE <= $2::DATE AND b.end_date::DATE >= $2::DATE
-      AND b.status != 'cancelled'
-      ORDER BY b.start_date ASC
-      LIMIT 5
+      (
+        SELECT b.start_date, b.end_date, vl.listing_title as title, vl.category, 'User' as subtitle, 'Booked' as event_type
+        FROM bookings b
+        JOIN vendor_listings vl ON b.listing_id = vl.id
+        WHERE vl.vendor_id = $1
+        AND b.start_date::DATE <= $2::DATE AND b.end_date::DATE >= $2::DATE
+        AND b.status != 'cancelled'
+      )
+      UNION ALL
+      (
+        SELECT vab.start_date, vab.end_date, COALESCE(vl.listing_title, vab.category) as title, vab.category, vab.reason as subtitle, 'Blocked' as event_type
+        FROM vendor_availability_blocks vab
+        LEFT JOIN vendor_listings vl ON vab.listing_id = vl.id
+        WHERE vab.vendor_id = $1
+        AND vab.start_date::DATE <= $2::DATE AND vab.end_date::DATE >= $2::DATE
+      )
+      ORDER BY start_date ASC
+      LIMIT 10
     `, [vendorId, todayStr]);
 
     const formatTime = (d: any) => {
@@ -94,12 +104,20 @@ export class AvailabilityService {
       return `${hours}:${minStr} ${ampm}`;
     };
 
-    const todayEvents = todayEventsRes.rows.map((b: any) => ({
-      title: b.title,
-      subtitle: b.subtitle,
-      category: b.category,
-      time: `${formatTime(b.start_date)} - ${formatTime(b.end_date)}`
-    }));
+    const todayEvents = todayEventsRes.rows.map((b: any) => {
+      const start = new Date(b.start_date);
+      const end = new Date(b.end_date);
+      const diffMs = end.getTime() - start.getTime();
+      const isAllDay = b.event_type === 'Blocked' && diffMs >= 23 * 60 * 60 * 1000;
+
+      return {
+        title: b.title,
+        subtitle: b.subtitle,
+        category: b.category,
+        eventType: b.event_type,
+        time: isAllDay ? 'All Day' : `${formatTime(b.start_date)} - ${formatTime(b.end_date)}`
+      };
+    });
 
     return {
       studio: { 
@@ -242,7 +260,7 @@ export class AvailabilityService {
 
     // Get all listings for this category
     const listingsRes = await this.pool.query(`
-      SELECT id, listing_title, category, quantity, status, image_1
+      SELECT *
       FROM vendor_listings 
       WHERE vendor_id = $1 AND category = $2 AND status ILIKE 'active'
     `, [vendorId, category]);
@@ -298,15 +316,12 @@ export class AvailabilityService {
       const isAvailable = availableCount > 0;
       
       return {
-        id: item.id,
-        listing_title: item.listing_title,
-        category: item.category,
-        image_1: item.image_1,
+        ...item,
         totalCount,
         availableCount,
         rentedCount,
         maintenanceCount,
-        status: isAvailable ? 'Available' : (rentedCount > 0 ? 'Fully Booked' : 'Inactive'),
+        availabilityStatus: isAvailable ? 'Available' : (rentedCount > 0 ? 'Fully Booked' : 'Inactive'),
         nextPickup: formatTime(bInfo.next_pickup),
         activity: rentedCount > 0 ? `${rentedCount} active rentals` : 'Ready to rent'
       };

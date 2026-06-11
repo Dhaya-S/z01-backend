@@ -1,9 +1,13 @@
 import { Injectable, Inject, InternalServerErrorException, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Pool } from 'pg';
+import { OneSignalService } from '../onesignal/onesignal.service';
 
 @Injectable()
 export class VendorsService implements OnModuleInit {
-  constructor(@Inject('DATABASE_POOL') private pool: Pool) {}
+  constructor(
+    @Inject('DATABASE_POOL') private pool: Pool,
+    private readonly onesignalService: OneSignalService,
+  ) {}
 
   async onModuleInit() {
     try {
@@ -60,10 +64,12 @@ export class VendorsService implements OnModuleInit {
           [vendorId]
         ),
         this.pool.query(
-          `SELECT r.rating,
+          `SELECT r.id as id,
+                  r.rating,
                   r.comment as review_text,
                   r.user_name as user_name,
                   r.images as images,
+                  r.vendor_reply as vendor_reply,
                   vl.id as listing_id,
                   vl.category as listing_category
            FROM reviews r
@@ -373,5 +379,55 @@ export class VendorsService implements OnModuleInit {
     );
     if (vendor.rows.length === 0) throw new NotFoundException('Vendor not found');
     return this.updateOnboardingStatus(vendor.rows[0].id, currentStep, status);
+  }
+
+  async replyToReview(reviewId: string, reply: string) {
+    try {
+      const { rows } = await this.pool.query(
+        `UPDATE reviews
+         SET vendor_reply = $1
+         WHERE id = $2
+         RETURNING *`,
+        [reply, reviewId]
+      );
+
+      if (rows.length === 0) {
+        throw new NotFoundException('Review not found');
+      }
+
+      const review = rows[0];
+
+      const listingRes = await this.pool.query(
+        'SELECT listing_title FROM vendor_listings WHERE id = $1',
+        [review.listing_id]
+      );
+      const listingTitle = listingRes.rows[0]?.listing_title || 'your listing';
+
+      const title = 'New Reply to Your Review';
+      const body = `The vendor replied to your review on ${listingTitle}: "${reply}"`;
+
+      if (review.user_id) {
+        await this.pool.query(
+          `INSERT INTO notifications (user_id, title, body, is_read)
+           VALUES ($1, $2, $3, false)`,
+          [review.user_id, title, body]
+        );
+
+        try {
+          await this.onesignalService.sendUserNotification(review.user_id, title, body, {
+            type: 'review_reply',
+            reviewId: review.id,
+          });
+        } catch (e) {
+          console.error('Failed to send push notification via OneSignal:', e.message);
+        }
+      }
+
+      return { success: true, data: review };
+    } catch (error) {
+      console.error('Error replying to review:', error);
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException('Failed to reply to review');
+    }
   }
 }

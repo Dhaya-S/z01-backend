@@ -54,4 +54,13 @@ export class VendorsController {
   updateStatus(@Request() req: any, @Body() body: { currentStep: number, status?: string }) {
     return this.vendorsService.updateOnboardingStatusByUserId(req.user.userId, body.currentStep, body.status);
   }
+
+  @Post('reviews/:reviewId/reply')
+  @UseGuards(AuthGuard('jwt'))
+  async replyToReview(
+    @Param('reviewId') reviewId: string,
+    @Body('reply') reply: string,
+  ) {
+    return this.vendorsService.replyToReview(reviewId, reply);
+  }
 }

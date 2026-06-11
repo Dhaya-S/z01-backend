@@ -5,20 +5,31 @@ import { Pool } from 'pg';
 export class ManpowerService {
   constructor(@Inject('DATABASE_POOL') private readonly pool: Pool) {}
 
-  async findAll(vendorId?: number) {
+  async findAll(vendorId?: number, date?: string) {
     try {
+      const targetDate = date || new Date().toISOString().split('T')[0];
       let query = `
         SELECT vl.*, 
         (SELECT COALESCE(json_agg(DISTINCT TO_CHAR(vab.start_date, 'YYYY-MM-DD')), '[]') 
          FROM vendor_availability_blocks vab 
-         WHERE vab.vendor_id = vl.vendor_id AND vab.category = vl.category) as blocked_dates
+         WHERE vab.vendor_id = vl.vendor_id AND vab.category = vl.category AND (vab.listing_id IS NULL OR vab.listing_id = vl.id)) as blocked_dates,
+        CASE 
+          WHEN EXISTS (
+            SELECT 1 FROM vendor_availability_blocks vab
+            WHERE vab.vendor_id = vl.vendor_id 
+              AND vab.category = vl.category 
+              AND (vab.listing_id IS NULL OR vab.listing_id = vl.id)
+              AND $2::DATE BETWEEN vab.start_date::DATE AND vab.end_date::DATE
+          ) THEN 'paused'
+          ELSE vl.status
+        END as status
         FROM vendor_listings vl 
         WHERE vl.category = $1
       `;
-      const params: any[] = ['Manpower'];
+      const params: any[] = ['Manpower', targetDate];
 
       if (vendorId) {
-        query += ' AND vendor_id = $2';
+        query += ' AND vendor_id = $3';
         params.push(vendorId);
       }
 
@@ -30,16 +41,27 @@ export class ManpowerService {
     }
   }
 
-  async findOne(id: number) {
+  async findOne(id: number, date?: string) {
     try {
+      const targetDate = date || new Date().toISOString().split('T')[0];
       const { rows } = await this.pool.query(`
         SELECT vl.*, 
         (SELECT COALESCE(json_agg(DISTINCT TO_CHAR(vab.start_date, 'YYYY-MM-DD')), '[]') 
          FROM vendor_availability_blocks vab 
-         WHERE vab.vendor_id = vl.vendor_id AND vab.category = vl.category) as blocked_dates
+         WHERE vab.vendor_id = vl.vendor_id AND vab.category = vl.category AND (vab.listing_id IS NULL OR vab.listing_id = vl.id)) as blocked_dates,
+        CASE 
+          WHEN EXISTS (
+            SELECT 1 FROM vendor_availability_blocks vab
+            WHERE vab.vendor_id = vl.vendor_id 
+              AND vab.category = vl.category 
+              AND (vab.listing_id IS NULL OR vab.listing_id = vl.id)
+              AND $3::DATE BETWEEN vab.start_date::DATE AND vab.end_date::DATE
+          ) THEN 'paused'
+          ELSE vl.status
+        END as status
         FROM vendor_listings vl 
         WHERE vl.id = $1 AND vl.category = $2
-      `, [id, 'Manpower']);
+      `, [id, 'Manpower', targetDate]);
       if (rows.length === 0) {
         throw new NotFoundException('Manpower not found');
       }

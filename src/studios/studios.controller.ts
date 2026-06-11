@@ -7,25 +7,22 @@ export class StudiosController {
   constructor(private readonly studiosService: StudiosService) {}
 
   @Get()
-  async findAll(@Query('category') category?: string) {
-    // Note: If you want to support category filtering here as well, 
-    // you might need to update StudiosService.findAll to handle category.
-    // For now, returning all as requested for the main app view.
-    return await this.studiosService.findAll();
+  async findAll(@Query('category') category?: string, @Query('date') date?: string) {
+    return await this.studiosService.findAll(undefined, date);
   }
 
   @UseGuards(AuthGuard('jwt'))
   @Get('my-listings')
-  async getMyListings(@Req() req: any) {
+  async getMyListings(@Req() req: any, @Query('date') date?: string) {
     if (!req.user.vendorId) {
       throw new UnauthorizedException('User is not a registered vendor');
     }
-    return await this.studiosService.findAll(req.user.vendorId);
+    return await this.studiosService.findAll(req.user.vendorId, date);
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string) {
-    return await this.studiosService.findOne(parseInt(id));
+  async findOne(@Param('id') id: string, @Query('date') date?: string) {
+    return await this.studiosService.findOne(parseInt(id), date);
   }
 
   @UseGuards(AuthGuard('jwt'))

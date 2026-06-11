@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Req, UnauthorizedException, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Req, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { EquipmentService } from './equipment.service';
 import { AuthGuard } from '@nestjs/passport';
 
@@ -7,17 +7,17 @@ export class EquipmentController {
   constructor(private readonly equipmentService: EquipmentService) {}
 
   @Get()
-  async findAll() {
-    return await this.equipmentService.findAll();
+  async findAll(@Query('date') date?: string) {
+    return await this.equipmentService.findAll(undefined, date);
   }
 
   @UseGuards(AuthGuard('jwt'))
   @Get('my-listings')
-  async getMyListings(@Req() req: any) {
+  async getMyListings(@Req() req: any, @Query('date') date?: string) {
     if (!req.user.vendorId) {
       throw new UnauthorizedException('User is not a registered vendor');
     }
-    return await this.equipmentService.findAll(req.user.vendorId);
+    return await this.equipmentService.findAll(req.user.vendorId, date);
   }
 
   @UseGuards(AuthGuard('jwt'))

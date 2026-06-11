@@ -5,18 +5,29 @@ import { Pool } from 'pg';
 export class StudiosService {
   constructor(@Inject('DATABASE_POOL') private pool: Pool) {}
 
-  async findAll(vendorId?: number) {
+  async findAll(vendorId?: number, date?: string) {
     try {
+      const targetDate = date || new Date().toISOString().split('T')[0];
       // Always filter to 'Studio' category to prevent cross-category data leakage
       let query = `
         SELECT vl.*, 
         (SELECT COALESCE(json_agg(DISTINCT TO_CHAR(vab.start_date, 'YYYY-MM-DD')), '[]') 
          FROM vendor_availability_blocks vab 
-         WHERE vab.vendor_id = vl.vendor_id AND vab.category = vl.category) as blocked_dates
+         WHERE vab.vendor_id = vl.vendor_id AND vab.category = vl.category AND (vab.listing_id IS NULL OR vab.listing_id = vl.id)) as blocked_dates,
+        CASE 
+          WHEN EXISTS (
+            SELECT 1 FROM vendor_availability_blocks vab
+            WHERE vab.vendor_id = vl.vendor_id 
+              AND vab.category = vl.category 
+              AND (vab.listing_id IS NULL OR vab.listing_id = vl.id)
+              AND $1::DATE BETWEEN vab.start_date::DATE AND vab.end_date::DATE
+          ) THEN 'paused'
+          ELSE vl.status
+        END as status
         FROM vendor_listings vl 
         WHERE vl.category = 'Studio'
       `;
-      const params: any[] = [];
+      const params: any[] = [targetDate];
 
       if (vendorId) {
         params.push(vendorId);
@@ -31,16 +42,27 @@ export class StudiosService {
     }
   }
 
-  async findOne(id: number) {
+  async findOne(id: number, date?: string) {
     try {
+      const targetDate = date || new Date().toISOString().split('T')[0];
       const { rows } = await this.pool.query(`
         SELECT vl.*, 
         (SELECT COALESCE(json_agg(DISTINCT TO_CHAR(vab.start_date, 'YYYY-MM-DD')), '[]') 
          FROM vendor_availability_blocks vab 
-         WHERE vab.vendor_id = vl.vendor_id AND vab.category = vl.category) as blocked_dates
+         WHERE vab.vendor_id = vl.vendor_id AND vab.category = vl.category AND (vab.listing_id IS NULL OR vab.listing_id = vl.id)) as blocked_dates,
+        CASE 
+          WHEN EXISTS (
+            SELECT 1 FROM vendor_availability_blocks vab
+            WHERE vab.vendor_id = vl.vendor_id 
+              AND vab.category = vl.category 
+              AND (vab.listing_id IS NULL OR vab.listing_id = vl.id)
+              AND $2::DATE BETWEEN vab.start_date::DATE AND vab.end_date::DATE
+          ) THEN 'paused'
+          ELSE vl.status
+        END as status
         FROM vendor_listings vl 
         WHERE vl.id = $1
-      `, [id]);
+      `, [id, targetDate]);
       if (rows.length === 0) {
         throw new NotFoundException('Listing not found');
       }

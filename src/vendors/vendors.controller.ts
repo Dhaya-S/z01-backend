@@ -31,6 +31,12 @@ export class VendorsController {
     return this.vendorsService.getNotifications(id);
   }
 
+  @Get(':id/payouts')
+  @UseGuards(AuthGuard('jwt'))
+  getPayoutHistory(@Param('id') id: string) {
+    return this.vendorsService.getPayoutHistory(id);
+  }
+
   @Post('details')
   @UseGuards(AuthGuard('jwt'))
   updateDetails(@Request() req: any, @Body() details: any) {

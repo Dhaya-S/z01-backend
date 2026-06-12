@@ -131,6 +131,34 @@ export class VendorsService implements OnModuleInit {
     }
   }
 
+  async getPayoutHistory(vendorId: string) {
+    try {
+      const res = await this.pool.query(
+        `SELECT
+           ve.id,
+           ve.amount,
+           ve.type,
+           ve.status,
+           ve.created_at,
+           b.id as booking_id,
+           vl.listing_title as item_name,
+           vl.category as listing_category,
+           TO_CHAR(b.start_date, 'YYYY-MM-DD') as booking_date
+         FROM vendor_earnings ve
+         LEFT JOIN bookings b ON ve.booking_id = b.id
+         LEFT JOIN vendor_listings vl ON b.listing_id = vl.id
+         WHERE ve.vendor_id = $1
+         ORDER BY ve.created_at DESC
+         LIMIT 50`,
+        [vendorId]
+      );
+      return res.rows;
+    } catch (error) {
+      console.error('Error fetching payout history:', error);
+      throw new InternalServerErrorException('Failed to fetch payout history');
+    }
+  }
+
   async updateDetails(vendorId: string, details: any) {
     try {
       const {
